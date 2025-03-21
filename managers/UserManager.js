@@ -82,7 +82,7 @@ class UserManager {
   sendUserStats(ws, userId) {
     const stats = this.getUserStats(userId);
     
-    try {
+    try {sssss
       ws.send(JSON.stringify({
         type: 'userStats',
         userId,

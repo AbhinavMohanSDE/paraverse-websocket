@@ -320,6 +320,43 @@ class WebSocketServer {
         }
         return;
       }
+
+      // Handle world position and rotation updates
+      if (parsedMessage.type === 'worldUpdate' && parsedMessage.userId && 
+        parsedMessage.position && parsedMessage.rotation) {
+      try {
+        const { userId, position, rotation } = parsedMessage;
+        
+        // Validate the position and rotation data
+        if (typeof position.x !== 'number' || typeof position.y !== 'number' || 
+            typeof position.z !== 'number' || typeof rotation.y !== 'number') {
+          console.warn('Invalid world update data:', parsedMessage);
+          return;
+        }
+        
+        console.log(`World update from user ${userId}: pos(${position.x.toFixed(2)}, ${position.y.toFixed(2)}, ${position.z.toFixed(2)}), rot(${rotation.y.toFixed(2)})`);
+        
+        // Broadcast the update to all other clients
+        this.wss.clients.forEach((client) => {
+          if (client !== ws && client.readyState === WebSocket.OPEN) {
+            try {
+              client.send(JSON.stringify({
+                type: 'worldUpdate',
+                userId,
+                position,
+                rotation
+              }));
+            } catch (error) {
+              console.error('Error broadcasting world update:', error);
+            }
+          }
+        });
+        
+        return;
+      } catch (error) {
+        console.error('Error handling world update:', error);
+      }
+      }
       
       // Broadcast the message to all connected clients (except sender)
       this.broadcastMessage(ws, msgStr);
