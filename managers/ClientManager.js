@@ -69,6 +69,14 @@ class ClientManager {
     const client = this.connectedClients.get(ws);
     return client ? client.ip : null;
   }
+
+  /**
+   * Get client's user ID
+   */
+  getClientUserId(ws) {
+    const client = this.connectedClients.get(ws);
+    return client ? client.userId : null;
+  }
   
   /**
    * Get client origin

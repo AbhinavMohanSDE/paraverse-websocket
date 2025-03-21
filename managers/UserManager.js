@@ -10,6 +10,9 @@ class UserManager {
     
     // Track current guest number counter
     this.guestCounter = 1;
+    
+    // Track user stats for the current session
+    this.userStats = new Map();
   }
   
   /**
@@ -26,6 +29,59 @@ class UserManager {
     const guestName = `Guest${this.guestCounter}`;
     this.guestCounter++;
     return guestName;
+  }
+  
+  /**
+   * Initialize stats for a user
+   */
+  initUserStats(userId) {
+    if (!this.userStats.has(userId)) {
+      this.userStats.set(userId, {
+        meteorsSent: 0,
+        objectsShot: 0
+      });
+    }
+    return this.userStats.get(userId);
+  }
+  
+  /**
+   * Get stats for a user
+   */
+  getUserStats(userId) {
+    return this.userStats.get(userId) || this.initUserStats(userId);
+  }
+  
+  /**
+   * Update user stats
+   */
+  updateUserStats(userId, action) {
+    const stats = this.getUserStats(userId);
+    
+    if (action === 'meteorSent') {
+      stats.meteorsSent += 1;
+    } else if (action === 'objectShot') {
+      stats.objectsShot += 1;
+    }
+    
+    console.log(`Updated stats for user ${userId}: ${JSON.stringify(stats)}`);
+    return stats;
+  }
+  
+  /**
+   * Send user stats to a client
+   */
+  sendUserStats(ws, userId) {
+    const stats = this.getUserStats(userId);
+    
+    try {
+      ws.send(JSON.stringify({
+        type: 'userStats',
+        userId,
+        stats
+      }));
+    } catch (error) {
+      console.error('Error sending user stats:', error);
+    }
   }
   
   /**
@@ -51,6 +107,9 @@ class UserManager {
         
         console.log(`Updated user name for ${existingUserData.userId} to ${providedUserName}`);
       }
+      
+      // Ensure we have stats for this user
+      this.initUserStats(existingUserData.userId);
       
       return {
         userId: existingUserData.userId,
@@ -82,6 +141,9 @@ class UserManager {
         origin: clientOrigin,
         connected: Date.now()
       });
+      
+      // Initialize stats for this user
+      this.initUserStats(userId);
       
       console.log(`Registered new browser: ${browserFingerprint} as user: ${userId}, ${userName}`);
       
@@ -125,7 +187,7 @@ class UserManager {
   }
   
   /**
-   * Broadcast the current user list to all clients
+   * Broadcast the current user list to all clients with stats
    */
   broadcastUserList(wss) {
     try {
@@ -137,9 +199,14 @@ class UserManager {
       this.browserToUser.forEach((userData, fingerprint) => {
         if (!seenUserIds.has(userData.userId)) {
           seenUserIds.add(userData.userId);
+          
+          // Get user stats
+          const stats = this.getUserStats(userData.userId);
+          
           activeUsers.push({
             id: userData.userId,
-            name: userData.userName
+            name: userData.userName,
+            stats // Include stats in user data
           });
         }
       });
@@ -197,6 +264,10 @@ class UserManager {
     browsersToPrune.forEach(fingerprint => {
       const userData = this.browserToUser.get(fingerprint);
       console.log(`Pruning inactive browser: ${fingerprint}, User: ${userData.userName}`);
+      
+      // Also remove stats for this user
+      this.userStats.delete(userData.userId);
+      
       this.browserToUser.delete(fingerprint);
     });
     

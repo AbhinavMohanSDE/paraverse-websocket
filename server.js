@@ -191,6 +191,42 @@ class WebSocketServer {
         }
       }
       
+      // Handle user stats request
+      if (parsedMessage.type === 'getUserStats' && parsedMessage.userId) {
+        try {
+          // Send the requested user's stats back to the client
+          this.userManager.sendUserStats(ws, parsedMessage.userId);
+          return;
+        } catch (error) {
+          console.error('Error handling getUserStats request:', error);
+        }
+      }
+      
+      // Handle record action request (meteor sent or object shot)
+      if (parsedMessage.type === 'recordAction' && parsedMessage.action) {
+        try {
+          // Get the user ID for this client
+          const userId = this.clientManager.getClientUserId(ws);
+          if (userId) {
+            // Update the user's stats
+            const updatedStats = this.userManager.updateUserStats(userId, parsedMessage.action);
+            
+            // Send updated stats back to the client
+            ws.send(JSON.stringify({
+              type: 'userStats',
+              userId: userId,
+              stats: updatedStats
+            }));
+            
+            // Since stats have changed, broadcast updated user list
+            this.userManager.broadcastUserList(this.wss);
+          }
+          return;
+        } catch (error) {
+          console.error('Error handling recordAction request:', error);
+        }
+      }
+      
       // Broadcast the message to all connected clients (except sender)
       this.broadcastMessage(ws, msgStr);
     } catch (error) {
