@@ -280,6 +280,46 @@ class WebSocketServer {
           console.error('Error sending chat history:', error);
         }
       }
+
+      // Handle update user location request
+      if (parsedMessage.type === 'updateUserLocation' && parsedMessage.userId && parsedMessage.location) {
+        try {
+          // Look up the user
+          const user = this.userManager.getUserById(parsedMessage.userId);
+          
+          if (user) {
+            console.log(`Updating location for user ${parsedMessage.userId} from ${user.location || 'Unknown'} to ${parsedMessage.location}`);
+            
+            // Update in browser to user mapping
+            for (const [fp, userData] of this.userManager.browserToUser.entries()) {
+              if (userData.userId === parsedMessage.userId) {
+                userData.location = parsedMessage.location;
+                break;
+              }
+            }
+            
+            // Update in users map
+            if (this.userManager.users.has(parsedMessage.userId)) {
+              const userData = this.userManager.users.get(parsedMessage.userId);
+              userData.location = parsedMessage.location;
+            }
+            
+            // Update in user stats
+            const stats = this.userManager.getUserStats(parsedMessage.userId);
+            if (stats) {
+              stats.location = parsedMessage.location;
+            }
+            
+            // Broadcast updated user list to all clients
+            this.userManager.broadcastUserList(this.wss);
+          } else {
+            console.warn(`Failed to update location: User ${parsedMessage.userId} not found`);
+          }
+        } catch (error) {
+          console.error('Error handling updateUserLocation request:', error);
+        }
+        return;
+      }
       
       // Broadcast the message to all connected clients (except sender)
       this.broadcastMessage(ws, msgStr);

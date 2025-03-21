@@ -108,10 +108,11 @@ class UserManager {
   }
   
   /**
-   * Get approximate location from IP address
-   * This makes real API calls to improve location accuracy
-   */
-  async getLocationFromIp(clientIp) {
+     * Get approximate location from IP address
+     * This is now much simpler since we'll rely on client-side location detection
+     */
+  getLocationFromIp(clientIp) {
+    // We're now using the client to determine location, so this just returns a default
     // Remove IPv6 prefix if present
     let ip = clientIp;
     if (ip.indexOf('::ffff:') === 0) {
@@ -121,116 +122,11 @@ class UserManager {
     // Check for local IPs
     if (ip === '127.0.0.1' || ip === 'localhost' || ip.startsWith('192.168.') || 
         ip.startsWith('10.') || ip.startsWith('172.16.')) {
-      return 'Local Network';
+      return 'Earth';
     }
     
-    // Check if we have a cached result that's not expired
-    if (this.locationCache.has(ip)) {
-      const cachedData = this.locationCache.get(ip);
-      const now = Date.now();
-      
-      if (now - cachedData.timestamp < this.CACHE_EXPIRATION) {
-        console.log(`Using cached location for IP ${ip}: ${cachedData.location}`);
-        return cachedData.location;
-      }
-      
-      // If expired, remove from cache
-      this.locationCache.delete(ip);
-    }
-    
-    // Try multiple API services for best reliability
-    // Initialize variables for location data
-    let city = '';
-    let country = '';
-    let locationFound = false;
-    
-    // Try first API (ip-api.com)
-    try {
-      console.log(`Fetching location for IP ${ip} using ip-api.com`);
-      const response = await fetch(`http://ip-api.com/json/${ip}`);
-      const data = await response.json();
-      
-      if (data.status === 'success') {
-        city = data.city || '';
-        country = data.country || '';
-        
-        if (city || country) {
-          locationFound = true;
-        }
-      }
-    } catch (error) {
-      console.warn('First location API failed:', error);
-    }
-    
-    // Try second API if first failed (ipapi.co)
-    if (!locationFound) {
-      try {
-        console.log(`Fetching location for IP ${ip} using ipapi.co`);
-        const response = await fetch(`https://ipapi.co/${ip}/json/`);
-        const data = await response.json();
-        
-        city = data.city || '';
-        country = data.country_name || '';
-        
-        if (city || country) {
-          locationFound = true;
-        }
-      } catch (error) {
-        console.warn('Second location API failed:', error);
-      }
-    }
-    
-    // Try third API if others failed (ipinfo.io)
-    if (!locationFound) {
-      try {
-        console.log(`Fetching location for IP ${ip} using ipinfo.io`);
-        const response = await fetch(`https://ipinfo.io/${ip}/json`);
-        const data = await response.json();
-        
-        city = data.city || '';
-        country = data.country || '';
-        
-        // Convert country code to name if possible
-        if (country && country.length === 2) {
-          // Server-side doesn't have Intl.DisplayNames so use a simple mapping
-          const countryCodeMap = {
-            "US": "United States",
-            "CA": "Canada",
-            "GB": "United Kingdom",
-            "AU": "Australia",
-            "DE": "Germany",
-            "FR": "France",
-            "JP": "Japan",
-            "CN": "China",
-            "IN": "India",
-            "BR": "Brazil",
-            // Add more as needed
-          };
-          country = countryCodeMap[country] || country;
-        }
-        
-        if (city || country) {
-          locationFound = true;
-        }
-      } catch (error) {
-        console.warn('Third location API failed:', error);
-      }
-    }
-    
-    // Format and cache the result
-    const formattedLocation = this.formatLocation(city, country);
-    
-    // Use a fallback if all APIs failed
-    const finalLocation = locationFound ? formattedLocation : 'Earth';
-    
-    // Cache the result
-    this.locationCache.set(ip, {
-      location: finalLocation,
-      timestamp: Date.now()
-    });
-    
-    console.log(`Determined location for IP ${ip}: ${finalLocation}`);
-    return finalLocation;
+    // For all other IPs, return "Earth" as the location will be updated by the client
+    return 'Earth';
   }
   
   /**
