@@ -2,6 +2,7 @@ const WebSocket = require('ws');
 const http = require('http');
 const UserManager = require('./managers/UserManager');
 const ClientManager = require('./managers/ClientManager');
+const ChatManager = require('./managers/ChatManager');
 const ServerState = require('./utils/ServerState');
 const { setupErrorHandlers } = require('./utils/ErrorHandlers');
 
@@ -14,6 +15,7 @@ class WebSocketServer {
     this.userManager = new UserManager();
     this.serverState = new ServerState();
     this.clientManager = new ClientManager(this.userManager, this.serverState);
+    this.chatManager = new ChatManager();
     
     // Create HTTP server
     this.server = this.createHttpServer();
@@ -202,40 +204,75 @@ class WebSocketServer {
         }
       }
       
-    // Handle record action request (meteor sent or object shot)
-    if (parsedMessage.type === 'recordAction' && parsedMessage.action) {
-      try {
-        // First try to get userId from the message itself
-        let userId = parsedMessage.userId;
-        
-        // If not in message, fall back to client manager
-        if (!userId) {
-          userId = this.clientManager.getClientUserId(ws);
+      // Handle record action request (meteor sent or object shot)
+      if (parsedMessage.type === 'recordAction' && parsedMessage.action) {
+        try {
+          // First try to get userId from the message itself
+          let userId = parsedMessage.userId;
+          
+          // If not in message, fall back to client manager
+          if (!userId) {
+            userId = this.clientManager.getClientUserId(ws);
+          }
+          
+          if (userId) {
+            // Update the user's stats
+            const updatedStats = this.userManager.updateUserStats(userId, parsedMessage.action);
+            
+            // Send updated stats back to the client
+            ws.send(JSON.stringify({
+              type: 'userStats',
+              userId: userId,
+              stats: updatedStats
+            }));
+            
+            // Since stats have changed, broadcast updated user list
+            this.userManager.broadcastUserList(this.wss);
+            
+            console.log(`Updated stats for ${parsedMessage.action} by user ${userId}`);
+          } else {
+            console.warn('Could not identify user for recordAction:', parsedMessage);
+          }
+          return;
+        } catch (error) {
+          console.error('Error handling recordAction request:', error);
         }
-        
-        if (userId) {
-          // Update the user's stats
-          const updatedStats = this.userManager.updateUserStats(userId, parsedMessage.action);
-          
-          // Send updated stats back to the client
-          ws.send(JSON.stringify({
-            type: 'userStats',
-            userId: userId,
-            stats: updatedStats
-          }));
-          
-          // Since stats have changed, broadcast updated user list
-          this.userManager.broadcastUserList(this.wss);
-          
-          console.log(`Updated stats for ${parsedMessage.action} by user ${userId}`);
-        } else {
-          console.warn('Could not identify user for recordAction:', parsedMessage);
-        }
-        return;
-      } catch (error) {
-        console.error('Error handling recordAction request:', error);
       }
-    }
+      
+      // Handle chat message request
+      if (parsedMessage.type === 'chatMessage' && parsedMessage.userId && parsedMessage.text) {
+        try {
+          // Get user name from the user manager
+          const user = this.userManager.getUserById(parsedMessage.userId);
+          const userName = user ? user.name : 'Unknown User';
+          
+          // Add the message to chat manager
+          const message = this.chatManager.addMessage(
+            parsedMessage.userId,
+            userName,
+            parsedMessage.text
+          );
+          
+          // Broadcast to all clients
+          this.chatManager.broadcastMessage(this.wss, message);
+          
+          console.log(`Chat message from ${userName} (${parsedMessage.userId}): ${parsedMessage.text.substring(0, 50)}${parsedMessage.text.length > 50 ? '...' : ''}`);
+          return;
+        } catch (error) {
+          console.error('Error handling chat message:', error);
+        }
+      }
+      
+      // Handle chat history request
+      if (parsedMessage.type === 'getChatHistory') {
+        try {
+          console.log(`Sending chat history to client ${clientId}`);
+          this.chatManager.sendChatHistory(ws);
+          return;
+        } catch (error) {
+          console.error('Error sending chat history:', error);
+        }
+      }
       
       // Broadcast the message to all connected clients (except sender)
       this.broadcastMessage(ws, msgStr);

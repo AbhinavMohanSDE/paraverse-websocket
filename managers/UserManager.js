@@ -277,6 +277,30 @@ class UserManager {
     
     return browsersToPrune.length;
   }
+
+    /**
+   * Get user by ID
+   */
+  getUserById(userId) {
+    // First check the users map
+    if (this.users.has(userId)) {
+      return this.users.get(userId);
+    }
+    
+    // If not found in users map, try to look up in browserToUser
+    for (const [fp, userData] of this.browserToUser.entries()) {
+      if (userData.userId === userId) {
+        // Construct a user object from browser data
+        return {
+          id: userData.userId,
+          name: userData.userName,
+          connected: userData.lastActivity || Date.now()
+        };
+      }
+    }
+    
+    return null;
+  }
 }
 
 module.exports = UserManager;
