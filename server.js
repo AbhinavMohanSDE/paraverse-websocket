@@ -254,7 +254,14 @@ class WebSocketServer {
           );
           
           // Broadcast to all clients
-          this.chatManager.broadcastMessage(this.wss, message);
+          this.chatManager.broadcastMessage(this.wss, message, ws);
+
+          // Send the message directly to the sender
+          // This ensures they still see their own message
+          ws.send(JSON.stringify({
+            type: 'chatMessage',
+            message
+          }));
           
           console.log(`Chat message from ${userName} (${parsedMessage.userId}): ${parsedMessage.text.substring(0, 50)}${parsedMessage.text.length > 50 ? '...' : ''}`);
           return;
