@@ -28,23 +28,23 @@ const browserToUser = new Map();
 // Function to broadcast the current user list to all clients
 function broadcastUserList() {
   try {
-    // Get unique active users by connection
-    const uniqueUserIds = new Set();
-    const uniqueUsers = [];
+    // Only use browser fingerprints to determine unique users
+    const activeUsers = [];
+    const seenUserIds = new Set();
     
-    // First collect all unique user IDs that are currently connected
-    connectedClients.forEach((client) => {
-      if (client.userId && !uniqueUserIds.has(client.userId)) {
-        uniqueUserIds.add(client.userId);
-        uniqueUsers.push({
-          id: client.userId,
-          name: users.get(client.userId)?.name || 'Unknown User'
+    // Collect unique users by browser fingerprint
+    browserToUser.forEach((userData, fingerprint) => {
+      if (!seenUserIds.has(userData.userId)) {
+        seenUserIds.add(userData.userId);
+        activeUsers.push({
+          id: userData.userId,
+          name: userData.userName
         });
       }
     });
     
     // Create the message once
-    const message = JSON.stringify(uniqueUsers);
+    const message = JSON.stringify(activeUsers);
     
     // Send to all connected clients
     wss.clients.forEach((client) => {
@@ -57,7 +57,7 @@ function broadcastUserList() {
       }
     });
     
-    console.log(`Broadcasted user list with ${uniqueUsers.length} unique users to all clients`);
+    console.log(`Broadcasted user list with ${activeUsers.length} unique browser fingerprints to all clients`);
   } catch (error) {
     console.error('Error broadcasting user list:', error);
   }
@@ -86,7 +86,8 @@ const server = http.createServer((req, res) => {
       status: 'online',
       message: 'WebSocket server is running. Connect via WebSocket protocol.',
       connections: wss?.clients?.size || 0,
-      uptime: process.uptime()
+      uptime: process.uptime(),
+      uniqueUsers: browserToUser.size
     }));
     return;
   }
@@ -141,7 +142,8 @@ const serverState = {
   connections: 0,
   messages: 0,
   errors: 0,
-  startTime: Date.now()
+  startTime: Date.now(),
+  uniqueBrowsers: 0
 };
 
 // Global error handling
@@ -161,15 +163,11 @@ wss.on('connection', (ws, req) => {
   const clientOrigin = req.headers.origin || 'Unknown';
   const clientId = `client-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   
-  // We'll wait for identity information before assigning a user
-  let userId = null;
-  let userName = null;
-  let isReturningUser = false;
-  
-  // Initialize connection but don't assign a user yet
+  // Initialize connection metadata
   connectedClients.set(ws, {
     id: clientId,
     userId: null, // Will be set after identity is established
+    browserFingerprint: null,
     ip: clientIp,
     origin: clientOrigin,
     connected: Date.now(),
@@ -180,7 +178,7 @@ wss.on('connection', (ws, req) => {
   
   console.log(`Client ${clientId} connected from IP: ${clientIp}, Origin: ${clientOrigin}, Total: ${wss.clients.size}`);
   
-  // Message handler - we'll process messages before sending the welcome
+  // Message handler
   ws.on('message', (message) => {
     try {
       const msgStr = message.toString();
@@ -197,65 +195,90 @@ wss.on('connection', (ws, req) => {
       
       const parsedMessage = JSON.parse(msgStr);
       
-      // Handle identity message (client sending persistent user ID)
-      if (parsedMessage.type === 'identity' && parsedMessage.userId && parsedMessage.userName) {
+      // Handle identity message with browser fingerprint
+      if (parsedMessage.type === 'identity' && parsedMessage.browserFingerprint) {
         try {
+          const browserFingerprint = parsedMessage.browserFingerprint;
           const providedUserId = parsedMessage.userId;
           const providedUserName = parsedMessage.userName;
           
-          console.log(`Received identity for user: ${providedUserId}, ${providedUserName}`);
+          console.log(`Received identity with browser fingerprint: ${browserFingerprint}`);
           
-          // Check if this is an existing user
-          const existingUser = users.get(providedUserId);
+          // Update client with the browser fingerprint
+          if (client) {
+            client.browserFingerprint = browserFingerprint;
+          }
           
-          if (existingUser) {
-            // This is a returning user
-            userId = providedUserId;
-            userName = existingUser.name;
-            isReturningUser = true;
-            
-            // Update the client with the existing user ID
+          // Check if this browser fingerprint already has a user
+          const existingUserData = browserToUser.get(browserFingerprint);
+          
+          // If this browser fingerprint is known and has a user ID
+          if (existingUserData) {
+            // Update client with the existing user data
             if (client) {
-              client.userId = providedUserId;
-              
-              // Update the connected timestamp
-              existingUser.connected = Date.now();
-              existingUser.ip = clientIp; // Update IP in case it changed
-              
-              console.log(`Restored existing user: ${providedUserId}, ${existingUser.name}`);
+              client.userId = existingUserData.userId;
             }
-          } else {
-            // This is a new user with a client-generated ID
-            userId = providedUserId;
-            userName = providedUserName;
             
-            users.set(providedUserId, {
-              id: providedUserId,
-              name: providedUserName,
+            // Send welcome message
+            try {
+              ws.send(JSON.stringify({
+                type: 'welcome',
+                message: 'Welcome back to Paraverse',
+                id: clientId,
+                userId: existingUserData.userId,
+                userName: existingUserData.userName,
+                timestamp: Date.now()
+              }));
+            } catch (error) {
+              console.error('Error sending welcome message:', error);
+            }
+            
+            console.log(`Recognized returning browser: ${browserFingerprint} as user: ${existingUserData.userId}, ${existingUserData.userName}`);
+          } 
+          // If this is a new browser or has a provided userId that needs to be stored
+          else {
+            // Generate or use the provided user data
+            const userId = providedUserId || `user-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+            const userName = providedUserName || generateUserName();
+            
+            // Store this data for the browser fingerprint
+            browserToUser.set(browserFingerprint, {
+              userId: userId,
+              userName: userName,
+              firstSeen: Date.now()
+            });
+            
+            // Update the client with this user ID
+            if (client) {
+              client.userId = userId;
+            }
+            
+            // Store user data
+            users.set(userId, {
+              id: userId,
+              name: userName,
               ip: clientIp,
               origin: clientOrigin,
               connected: Date.now()
             });
             
-            // Update client with the provided ID
-            if (client) {
-              client.userId = providedUserId;
-              console.log(`Created new user with provided ID: ${providedUserId}, ${providedUserName}`);
+            serverState.uniqueBrowsers = browserToUser.size;
+            
+            // Send welcome message
+            try {
+              ws.send(JSON.stringify({
+                type: 'welcome',
+                message: providedUserId ? 'Welcome back to Paraverse' : 'Connected to Paraverse WebSocket Server',
+                id: clientId,
+                userId: userId,
+                userName: userName,
+                timestamp: Date.now()
+              }));
+            } catch (error) {
+              console.error('Error sending welcome message:', error);
             }
-          }
-          
-          // Now send the welcome message with the correct user info
-          try {
-            ws.send(JSON.stringify({
-              type: 'welcome',
-              message: isReturningUser ? 'Welcome back to Paraverse' : 'Connected to Paraverse WebSocket Server',
-              id: clientId,
-              userId: userId,
-              userName: userName,
-              timestamp: Date.now()
-            }));
-          } catch (error) {
-            console.error('Error sending welcome message:', error);
+            
+            console.log(`Registered new browser: ${browserFingerprint} as user: ${userId}, ${userName}`);
           }
           
           // Broadcast updated user list after identity is established
@@ -264,42 +287,6 @@ wss.on('connection', (ws, req) => {
         } catch (error) {
           console.error('Error handling identity message:', error);
         }
-      }
-      
-      // If we got this far and still don't have a user ID, generate one
-      if (!userId && client && !client.userId) {
-        // Generate a unique ID and name for this user
-        userId = `user-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-        userName = generateUserName();
-        
-        // Store user data
-        users.set(userId, {
-          id: userId,
-          name: userName,
-          ip: clientIp,
-          origin: clientOrigin,
-          connected: Date.now()
-        });
-        
-        // Update client with the new user ID
-        client.userId = userId;
-        
-        // Send welcome with new user info
-        try {
-          ws.send(JSON.stringify({
-            type: 'welcome',
-            message: 'Connected to Paraverse WebSocket Server',
-            id: clientId,
-            userId: userId,
-            userName: userName,
-            timestamp: Date.now()
-          }));
-        } catch (error) {
-          console.error('Error sending welcome message:', error);
-        }
-        
-        // Broadcast updated user list
-        broadcastUserList();
       }
       
       // Handle ping-pong specially
@@ -347,8 +334,33 @@ wss.on('connection', (ws, req) => {
     const clientData = connectedClients.get(ws);
     connectedClients.delete(ws);
     
-    // Broadcast the updated user list after removing the client
-    broadcastUserList();
+    // Only broadcast if we need to - check if any other connections exist for this browser
+    let shouldBroadcast = true;
+    
+    if (clientData && clientData.browserFingerprint) {
+      let browserStillConnected = false;
+      
+      // Check if any other connections are from this browser
+      connectedClients.forEach((client) => {
+        if (client.browserFingerprint === clientData.browserFingerprint) {
+          browserStillConnected = true;
+        }
+      });
+      
+      // If the browser is no longer connected, we can remove it
+      if (!browserStillConnected) {
+        console.log(`Browser ${clientData.browserFingerprint} has no more connections`);
+      } else {
+        // Browser still has other connections, no need to update the user list
+        console.log(`Browser ${clientData.browserFingerprint} still has other connections`);
+        shouldBroadcast = false;
+      }
+    }
+    
+    // Broadcast the updated user list if needed
+    if (shouldBroadcast) {
+      broadcastUserList();
+    }
   });
   
   // Error handler
@@ -377,26 +389,42 @@ server.listen(PORT, '0.0.0.0', () => {
 // Health check interval - logs server status every minute
 setInterval(() => {
   const uptime = Math.floor((Date.now() - serverState.startTime) / 1000);
-  console.log(`[Health] Uptime: ${uptime}s, Clients: ${wss.clients.size}, Total connections: ${serverState.connections}, Messages: ${serverState.messages}, Errors: ${serverState.errors}, Users: ${users.size}`);
+  console.log(`[Health] Uptime: ${uptime}s, Clients: ${wss.clients.size}, Total connections: ${serverState.connections}, Messages: ${serverState.messages}, Errors: ${serverState.errors}, Unique browsers: ${browserToUser.size}`);
 }, 60000);
 
-// Cleanup interval - remove users that haven't been connected in a while
+// Cleanup interval - periodically check for zombie entries
 setInterval(() => {
-  // Count how many actual connected clients we have for each user
-  const userConnections = new Map();
+  const now = Date.now();
+  const INACTIVE_THRESHOLD = 24 * 60 * 60 * 1000; // 24 hours
   
-  connectedClients.forEach((client) => {
-    if (client.userId) {
-      const count = userConnections.get(client.userId) || 0;
-      userConnections.set(client.userId, count + 1);
+  // Check for browsers with no connections for more than threshold
+  let browsersToPrune = [];
+  
+  browserToUser.forEach((userData, fingerprint) => {
+    let hasActiveConnections = false;
+    
+    // Check if any connections exist for this browser
+    connectedClients.forEach((client) => {
+      if (client.browserFingerprint === fingerprint) {
+        hasActiveConnections = true;
+      }
+    });
+    
+    // If no active connections and data is old, mark for pruning
+    if (!hasActiveConnections && userData.lastActivity && (now - userData.lastActivity > INACTIVE_THRESHOLD)) {
+      browsersToPrune.push(fingerprint);
     }
   });
   
-  // Remove users with no active connections
-  users.forEach((user, userId) => {
-    if (!userConnections.has(userId)) {
-      console.log(`Removing disconnected user ${userId}`);
-      users.delete(userId);
-    }
+  // Prune inactive browser entries
+  browsersToPrune.forEach(fingerprint => {
+    const userData = browserToUser.get(fingerprint);
+    console.log(`Pruning inactive browser: ${fingerprint}, User: ${userData.userName}`);
+    browserToUser.delete(fingerprint);
   });
-}, 300000); // Every 5 minutes
+  
+  if (browsersToPrune.length > 0) {
+    console.log(`Pruned ${browsersToPrune.length} inactive browser entries`);
+    broadcastUserList();
+  }
+}, 3600000); // Run every hour
