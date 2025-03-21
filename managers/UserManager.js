@@ -1,5 +1,4 @@
 const WebSocket = require('ws');
-const NameGenerator = require('../utils/NameGenerator');
 
 class UserManager {
   constructor() {
@@ -9,8 +8,8 @@ class UserManager {
     // Track browser fingerprints to their user IDs
     this.browserToUser = new Map();
     
-    // Name generator utility
-    this.nameGenerator = new NameGenerator();
+    // Track current guest number counter
+    this.guestCounter = 1;
   }
   
   /**
@@ -18,6 +17,15 @@ class UserManager {
    */
   getBrowserCount() {
     return this.browserToUser.size;
+  }
+  
+  /**
+   * Generate next guest name
+   */
+  generateGuestName() {
+    const guestName = `Guest${this.guestCounter}`;
+    this.guestCounter++;
+    return guestName;
   }
   
   /**
@@ -31,6 +39,19 @@ class UserManager {
     if (existingUserData) {
       console.log(`Recognized returning browser: ${browserFingerprint} as user: ${existingUserData.userId}, ${existingUserData.userName}`);
       
+      // If user provided a new name, update it
+      if (providedUserName && providedUserName !== existingUserData.userName) {
+        existingUserData.userName = providedUserName;
+        
+        // Also update in the users map
+        const userData = this.users.get(existingUserData.userId);
+        if (userData) {
+          userData.name = providedUserName;
+        }
+        
+        console.log(`Updated user name for ${existingUserData.userId} to ${providedUserName}`);
+      }
+      
       return {
         userId: existingUserData.userId,
         userName: existingUserData.userName,
@@ -41,7 +62,9 @@ class UserManager {
     else {
       // Generate or use the provided user data
       const userId = providedUserId || `user-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-      const userName = providedUserName || this.nameGenerator.generate();
+      
+      // For new users, always use Guest + number naming unless they provided a custom name
+      const userName = providedUserName || this.generateGuestName();
       
       // Store this data for the browser fingerprint
       this.browserToUser.set(browserFingerprint, {
@@ -68,6 +91,37 @@ class UserManager {
         isReturning: false
       };
     }
+  }
+  
+  /**
+   * Update a user's name
+   */
+  updateUserName(userId, newName) {
+    // Find the browser fingerprint for this user
+    let fingerprint = null;
+    
+    for (const [fp, userData] of this.browserToUser.entries()) {
+      if (userData.userId === userId) {
+        fingerprint = fp;
+        userData.userName = newName;
+        userData.lastActivity = Date.now();
+        break;
+      }
+    }
+    
+    if (fingerprint) {
+      // Also update in users map
+      const userData = this.users.get(userId);
+      if (userData) {
+        userData.name = newName;
+      }
+      
+      console.log(`Updated user name for ${userId} to ${newName}`);
+      return true;
+    }
+    
+    console.warn(`Failed to update name: User ${userId} not found`);
+    return false;
   }
   
   /**

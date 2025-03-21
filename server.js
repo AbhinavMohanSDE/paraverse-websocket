@@ -177,6 +177,20 @@ class WebSocketServer {
         }
       }
       
+      // Handle name update request
+      if (parsedMessage.type === 'updateName' && parsedMessage.userId && parsedMessage.userName) {
+        try {
+          const success = this.userManager.updateUserName(parsedMessage.userId, parsedMessage.userName);
+          if (success) {
+            // Broadcast updated user list to all clients
+            this.userManager.broadcastUserList(this.wss);
+          }
+          return;
+        } catch (error) {
+          console.error('Error handling updateName request:', error);
+        }
+      }
+      
       // Broadcast the message to all connected clients (except sender)
       this.broadcastMessage(ws, msgStr);
     } catch (error) {
