@@ -202,30 +202,40 @@ class WebSocketServer {
         }
       }
       
-      // Handle record action request (meteor sent or object shot)
-      if (parsedMessage.type === 'recordAction' && parsedMessage.action) {
-        try {
-          // Get the user ID for this client
-          const userId = this.clientManager.getClientUserId(ws);
-          if (userId) {
-            // Update the user's stats
-            const updatedStats = this.userManager.updateUserStats(userId, parsedMessage.action);
-            
-            // Send updated stats back to the client
-            ws.send(JSON.stringify({
-              type: 'userStats',
-              userId: userId,
-              stats: updatedStats
-            }));
-            
-            // Since stats have changed, broadcast updated user list
-            this.userManager.broadcastUserList(this.wss);
-          }
-          return;
-        } catch (error) {
-          console.error('Error handling recordAction request:', error);
+    // Handle record action request (meteor sent or object shot)
+    if (parsedMessage.type === 'recordAction' && parsedMessage.action) {
+      try {
+        // First try to get userId from the message itself
+        let userId = parsedMessage.userId;
+        
+        // If not in message, fall back to client manager
+        if (!userId) {
+          userId = this.clientManager.getClientUserId(ws);
         }
+        
+        if (userId) {
+          // Update the user's stats
+          const updatedStats = this.userManager.updateUserStats(userId, parsedMessage.action);
+          
+          // Send updated stats back to the client
+          ws.send(JSON.stringify({
+            type: 'userStats',
+            userId: userId,
+            stats: updatedStats
+          }));
+          
+          // Since stats have changed, broadcast updated user list
+          this.userManager.broadcastUserList(this.wss);
+          
+          console.log(`Updated stats for ${parsedMessage.action} by user ${userId}`);
+        } else {
+          console.warn('Could not identify user for recordAction:', parsedMessage);
+        }
+        return;
+      } catch (error) {
+        console.error('Error handling recordAction request:', error);
       }
+    }
       
       // Broadcast the message to all connected clients (except sender)
       this.broadcastMessage(ws, msgStr);
