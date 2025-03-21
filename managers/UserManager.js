@@ -68,7 +68,7 @@ class UserManager {
     
     if (action === 'meteorSent') {
       stats.meteorsSent += 1;
-    } else if (action === 'objectSShot') {
+    } else if (action === 'objectShot') {
       stats.objectsShot += 1;
     }
     
