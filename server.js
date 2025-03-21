@@ -289,49 +289,52 @@ class WebSocketServer {
     }
   }
   
-  handleIdentity(ws, parsedMessage, clientId) {
+// This is the updated handleIdentity method for server.js
+handleIdentity(ws, parsedMessage, clientId) {
+  try {
+    const browserFingerprint = parsedMessage.browserFingerprint;
+    const providedUserId = parsedMessage.userId;
+    const providedUserName = parsedMessage.userName;
+    
+    console.log(`Received identity with browser fingerprint: ${browserFingerprint}`);
+    
+    // Update client with the browser fingerprint
+    this.clientManager.updateClientBrowserFingerprint(ws, browserFingerprint);
+    
+    // Process user identity and send welcome message
+    const userData = this.userManager.processUserIdentity(
+      browserFingerprint, 
+      providedUserId, 
+      providedUserName, 
+      this.clientManager.getClientIp(ws),
+      this.clientManager.getClientOrigin(ws)
+    );
+    
+    // Update client with user ID
+    this.clientManager.updateClientUserId(ws, userData.userId);
+    
+    // Send welcome message
     try {
-      const browserFingerprint = parsedMessage.browserFingerprint;
-      const providedUserId = parsedMessage.userId;
-      const providedUserName = parsedMessage.userName;
-      
-      console.log(`Received identity with browser fingerprint: ${browserFingerprint}`);
-      
-      // Update client with the browser fingerprint
-      this.clientManager.updateClientBrowserFingerprint(ws, browserFingerprint);
-      
-      // Process user identity and send welcome message
-      const userData = this.userManager.processUserIdentity(
-        browserFingerprint, 
-        providedUserId, 
-        providedUserName, 
-        this.clientManager.getClientIp(ws),
-        this.clientManager.getClientOrigin(ws)
-      );
-      
-      // Update client with user ID
-      this.clientManager.updateClientUserId(ws, userData.userId);
-      
-      // Send welcome message
-      try {
-        ws.send(JSON.stringify({
-          type: 'welcome',
-          message: userData.isReturning ? 'Welcome back to Paraverse' : 'Connected to Paraverse WebSocket Server',
-          id: clientId,
-          userId: userData.userId,
-          userName: userData.userName,
-          timestamp: Date.now()
-        }));
-      } catch (error) {
-        console.error('Error sending welcome message:', error);
-      }
-      
-      // Broadcast updated user list
-      this.userManager.broadcastUserList(this.wss);
+      ws.send(JSON.stringify({
+        type: 'welcome',
+        message: userData.isReturning ? 'Welcome back to Paraverse' : 'Connected to Paraverse WebSocket Server',
+        id: clientId,
+        userId: userData.userId,
+        userName: userData.userName,
+        firstJoined: userData.firstJoined,
+        location: userData.location,
+        timestamp: Date.now()
+      }));
     } catch (error) {
-      console.error('Error handling identity message:', error);
+      console.error('Error sending welcome message:', error);
     }
+    
+    // Broadcast updated user list
+    this.userManager.broadcastUserList(this.wss);
+  } catch (error) {
+    console.error('Error handling identity message:', error);
   }
+}
   
   handleClose(ws, code, reason, clientId) {
     console.log(`Client ${clientId} disconnected. Code: ${code}, Reason: ${reason || 'No reason provided'}`);

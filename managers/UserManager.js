@@ -34,11 +34,13 @@ class UserManager {
   /**
    * Initialize stats for a user
    */
-  initUserStats(userId) {
+  initUserStats(userId, firstJoined, location) {
     if (!this.userStats.has(userId)) {
       this.userStats.set(userId, {
         meteorsSent: 0,
-        objectsShot: 0
+        objectsShot: 0,
+        firstJoined: firstJoined || new Date().toISOString(),
+        location: location || 'Unknown'
       });
     }
     return this.userStats.get(userId);
@@ -85,9 +87,37 @@ class UserManager {
   }
   
   /**
+   * Get approximate location from IP address
+   * This is a simplified version - in a production environment,
+   * you would use a more robust geolocation service
+   */
+  getLocationFromIp(clientIp) {
+    // Simple location determination based on IP patterns
+    // In a real app, you'd use a proper geolocation API or service
+    
+    // Remove IPv6 prefix if present
+    let ip = clientIp;
+    if (ip.indexOf('::ffff:') === 0) {
+      ip = ip.substring(7);
+    }
+    
+    // Local IP addresses
+    if (ip === '127.0.0.1' || ip === 'localhost' || ip.startsWith('192.168.') || ip.startsWith('10.')) {
+      return 'Local Network';
+    }
+    
+    // This is very simplified - in a real app, you would use a proper IP geolocation service
+    // For this example, we'll just return a placeholder
+    return 'Earth';
+  }
+  
+  /**
    * Process user identity and determine if they're new or returning
    */
   processUserIdentity(browserFingerprint, providedUserId, providedUserName, clientIp, clientOrigin) {
+    // Get approximate location from IP
+    const location = this.getLocationFromIp(clientIp);
+    
     // Check if this browser fingerprint already has a user
     const existingUserData = this.browserToUser.get(browserFingerprint);
     
@@ -109,12 +139,14 @@ class UserManager {
       }
       
       // Ensure we have stats for this user
-      this.initUserStats(existingUserData.userId);
+      const stats = this.initUserStats(existingUserData.userId, existingUserData.firstJoined, location);
       
       return {
         userId: existingUserData.userId,
         userName: existingUserData.userName,
-        isReturning: true
+        isReturning: true,
+        firstJoined: existingUserData.firstJoined,
+        location: location
       };
     } 
     // If this is a new browser or has a provided userId that needs to be stored
@@ -125,12 +157,17 @@ class UserManager {
       // For new users, always use Guest + number naming unless they provided a custom name
       const userName = providedUserName || this.generateGuestName();
       
+      // Current timestamp for first joined
+      const firstJoined = new Date().toISOString();
+      
       // Store this data for the browser fingerprint
       this.browserToUser.set(browserFingerprint, {
         userId: userId,
         userName: userName,
         firstSeen: Date.now(),
-        lastActivity: Date.now()
+        lastActivity: Date.now(),
+        firstJoined: firstJoined,
+        location: location
       });
       
       // Store user data
@@ -139,18 +176,22 @@ class UserManager {
         name: userName,
         ip: clientIp,
         origin: clientOrigin,
-        connected: Date.now()
+        connected: Date.now(),
+        firstJoined: firstJoined,
+        location: location
       });
       
       // Initialize stats for this user
-      this.initUserStats(userId);
+      this.initUserStats(userId, firstJoined, location);
       
       console.log(`Registered new browser: ${browserFingerprint} as user: ${userId}, ${userName}`);
       
       return {
         userId,
         userName,
-        isReturning: false
+        isReturning: false,
+        firstJoined,
+        location
       };
     }
   }
@@ -206,7 +247,9 @@ class UserManager {
           activeUsers.push({
             id: userData.userId,
             name: userData.userName,
-            stats // Include stats in user data
+            stats, // Include stats in user data
+            firstJoined: userData.firstJoined,
+            location: userData.location
           });
         }
       });
@@ -278,7 +321,7 @@ class UserManager {
     return browsersToPrune.length;
   }
 
-    /**
+  /**
    * Get user by ID
    */
   getUserById(userId) {
@@ -294,7 +337,9 @@ class UserManager {
         return {
           id: userData.userId,
           name: userData.userName,
-          connected: userData.lastActivity || Date.now()
+          connected: userData.lastActivity || Date.now(),
+          firstJoined: userData.firstJoined,
+          location: userData.location
         };
       }
     }
