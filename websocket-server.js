@@ -22,6 +22,38 @@ function generateUserName() {
   return `${randomAdj}${randomNoun}${randomNumber}`;
 }
 
+// Function to broadcast the current user list to all clients
+function broadcastUserList() {
+  try {
+    // Create array of user objects from active connections
+    const activeUsers = Array.from(connectedClients.entries()).map(([socket, client]) => {
+      const userData = users.get(client.userId) || { id: client.userId, name: 'Unknown User' };
+      return {
+        id: userData.id,
+        name: userData.name
+      };
+    });
+    
+    // Create the message once
+    const message = JSON.stringify(activeUsers);
+    
+    // Send to all connected clients
+    wss.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        try {
+          client.send(message);
+        } catch (error) {
+          console.error('Error sending user list to client:', error);
+        }
+      }
+    });
+    
+    console.log(`Broadcasted user list with ${activeUsers.length} users to all clients`);
+  } catch (error) {
+    console.error('Error broadcasting user list:', error);
+  }
+}
+
 // Create HTTP server with better response
 const server = http.createServer((req, res) => {
   // Set CORS headers to allow connections from client domains
@@ -161,6 +193,9 @@ wss.on('connection', (ws, req) => {
     console.error('Error sending welcome message:', error);
   }
   
+  // Broadcast the updated user list to all clients
+  broadcastUserList();
+  
   // Message handler
   ws.on('message', (message) => {
     try {
@@ -191,21 +226,11 @@ wss.on('connection', (ws, req) => {
       // Handle getUsers request
       if (parsedMessage.type === 'getUsers') {
         try {
-          // Create array of user objects from active connections
-          const activeUsers = Array.from(connectedClients.entries()).map(([socket, client]) => {
-            const userData = users.get(client.userId) || { id: client.userId, name: 'Unknown User' };
-            return {
-              id: userData.id,
-              name: userData.name
-            };
-          });
-          
-          // Send the users list
-          ws.send(JSON.stringify(activeUsers));
-          console.log(`Sent user list with ${activeUsers.length} users to client ${clientId}`);
+          // Broadcast to all clients instead of just responding to this one
+          broadcastUserList();
           return;
         } catch (error) {
-          console.error('Error sending users list:', error);
+          console.error('Error handling getUsers request:', error);
         }
       }
       
@@ -248,6 +273,9 @@ wss.on('connection', (ws, req) => {
     }
     
     connectedClients.delete(ws);
+    
+    // Broadcast the updated user list after removing the client
+    broadcastUserList();
   });
   
   // Error handler
