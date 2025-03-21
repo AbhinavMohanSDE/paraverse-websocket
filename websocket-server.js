@@ -22,30 +22,29 @@ function generateUserName() {
   return `${randomAdj}${randomNoun}${randomNumber}`;
 }
 
-// Store session to client mapping
-const sessionClients = new Map();
+// Track browser fingerprints to their user IDs
+const browserToUser = new Map();
 
 // Function to broadcast the current user list to all clients
 function broadcastUserList() {
   try {
-    // Get unique active users based on userId values
-    const uniqueUsers = new Map();
+    // Get unique active users by connection
+    const uniqueUserIds = new Set();
+    const uniqueUsers = [];
     
-    // Collect all active users, keeping only the most recent connection for each userId
-    connectedClients.forEach((client, socket) => {
-      if (client.userId) {
-        uniqueUsers.set(client.userId, {
+    // First collect all unique user IDs that are currently connected
+    connectedClients.forEach((client) => {
+      if (client.userId && !uniqueUserIds.has(client.userId)) {
+        uniqueUserIds.add(client.userId);
+        uniqueUsers.push({
           id: client.userId,
           name: users.get(client.userId)?.name || 'Unknown User'
         });
       }
     });
     
-    // Convert map to array for sending
-    const activeUsers = Array.from(uniqueUsers.values());
-    
     // Create the message once
-    const message = JSON.stringify(activeUsers);
+    const message = JSON.stringify(uniqueUsers);
     
     // Send to all connected clients
     wss.clients.forEach((client) => {
@@ -58,7 +57,7 @@ function broadcastUserList() {
       }
     });
     
-    console.log(`Broadcasted user list with ${activeUsers.length} users to all clients`);
+    console.log(`Broadcasted user list with ${uniqueUsers.length} unique users to all clients`);
   } catch (error) {
     console.error('Error broadcasting user list:', error);
   }
@@ -162,23 +161,15 @@ wss.on('connection', (ws, req) => {
   const clientOrigin = req.headers.origin || 'Unknown';
   const clientId = `client-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   
-  // Generate a new unique user ID and name - this will be overridden if the client sends identity info
-  const newUserId = `user-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-  const newUserName = generateUserName();
+  // We'll wait for identity information before assigning a user
+  let userId = null;
+  let userName = null;
+  let isReturningUser = false;
   
-  // Initially store this as a new user
-  users.set(newUserId, {
-    id: newUserId,
-    name: newUserName,
-    ip: clientIp,
-    origin: clientOrigin,
-    connected: Date.now()
-  });
-  
-  // Track client connection
+  // Initialize connection but don't assign a user yet
   connectedClients.set(ws, {
     id: clientId,
-    userId: newUserId, // Will be updated if client provides identity
+    userId: null, // Will be set after identity is established
     ip: clientIp,
     origin: clientOrigin,
     connected: Date.now(),
@@ -187,26 +178,9 @@ wss.on('connection', (ws, req) => {
   
   serverState.connections++;
   
-  console.log(`Client ${clientId} connected from IP: ${clientIp}, Origin: ${clientOrigin}, Initial User: ${newUserName}, Total: ${wss.clients.size}`);
+  console.log(`Client ${clientId} connected from IP: ${clientIp}, Origin: ${clientOrigin}, Total: ${wss.clients.size}`);
   
-  // Send welcome message to client
-  try {
-    ws.send(JSON.stringify({
-      type: 'welcome',
-      message: 'Connected to Paraverse WebSocket Server',
-      id: clientId,
-      userId: newUserId,
-      userName: newUserName,
-      timestamp: Date.now()
-    }));
-  } catch (error) {
-    console.error('Error sending welcome message:', error);
-  }
-  
-  // Broadcast the updated user list to all clients
-  broadcastUserList();
-  
-  // Message handler
+  // Message handler - we'll process messages before sending the welcome
   ws.on('message', (message) => {
     try {
       const msgStr = message.toString();
@@ -235,12 +209,13 @@ wss.on('connection', (ws, req) => {
           const existingUser = users.get(providedUserId);
           
           if (existingUser) {
+            // This is a returning user
+            userId = providedUserId;
+            userName = existingUser.name;
+            isReturningUser = true;
+            
             // Update the client with the existing user ID
             if (client) {
-              // First, remove association with the temporary user ID
-              users.delete(client.userId);
-              
-              // Update the client with the persistent user ID
               client.userId = providedUserId;
               
               // Update the connected timestamp
@@ -251,6 +226,9 @@ wss.on('connection', (ws, req) => {
             }
           } else {
             // This is a new user with a client-generated ID
+            userId = providedUserId;
+            userName = providedUserName;
+            
             users.set(providedUserId, {
               id: providedUserId,
               name: providedUserName,
@@ -261,25 +239,67 @@ wss.on('connection', (ws, req) => {
             
             // Update client with the provided ID
             if (client) {
-              // Remove association with temporary ID
-              users.delete(client.userId);
-              
-              // Update client with the provided ID
               client.userId = providedUserId;
-              
               console.log(`Created new user with provided ID: ${providedUserId}, ${providedUserName}`);
             }
           }
           
-          // Track this session
-          sessionClients.set(providedUserId, ws);
+          // Now send the welcome message with the correct user info
+          try {
+            ws.send(JSON.stringify({
+              type: 'welcome',
+              message: isReturningUser ? 'Welcome back to Paraverse' : 'Connected to Paraverse WebSocket Server',
+              id: clientId,
+              userId: userId,
+              userName: userName,
+              timestamp: Date.now()
+            }));
+          } catch (error) {
+            console.error('Error sending welcome message:', error);
+          }
           
-          // Broadcast updated user list
+          // Broadcast updated user list after identity is established
           broadcastUserList();
           return;
         } catch (error) {
           console.error('Error handling identity message:', error);
         }
+      }
+      
+      // If we got this far and still don't have a user ID, generate one
+      if (!userId && client && !client.userId) {
+        // Generate a unique ID and name for this user
+        userId = `user-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+        userName = generateUserName();
+        
+        // Store user data
+        users.set(userId, {
+          id: userId,
+          name: userName,
+          ip: clientIp,
+          origin: clientOrigin,
+          connected: Date.now()
+        });
+        
+        // Update client with the new user ID
+        client.userId = userId;
+        
+        // Send welcome with new user info
+        try {
+          ws.send(JSON.stringify({
+            type: 'welcome',
+            message: 'Connected to Paraverse WebSocket Server',
+            id: clientId,
+            userId: userId,
+            userName: userName,
+            timestamp: Date.now()
+          }));
+        } catch (error) {
+          console.error('Error sending welcome message:', error);
+        }
+        
+        // Broadcast updated user list
+        broadcastUserList();
       }
       
       // Handle ping-pong specially
@@ -325,32 +345,6 @@ wss.on('connection', (ws, req) => {
     
     // Get the client data
     const clientData = connectedClients.get(ws);
-    if (clientData && clientData.userId) {
-      // Check if this userId is used by any other connections
-      let userIsStillConnected = false;
-      connectedClients.forEach((client, socket) => {
-        if (client.userId === clientData.userId && client.id !== clientData.id) {
-          userIsStillConnected = true;
-        }
-      });
-      
-      // Remove this client from the sessionClients map
-      if (sessionClients.get(clientData.userId) === ws) {
-        sessionClients.delete(clientData.userId);
-      }
-      
-      // Only remove user data if no other connections are using it
-      if (!userIsStillConnected) {
-        // Keep the user in the users map for reconnection
-        // We'll just mark it as disconnected
-        const user = users.get(clientData.userId);
-        if (user) {
-          user.disconnected = Date.now();
-          console.log(`Marked user ${clientData.userId} as disconnected`);
-        }
-      }
-    }
-    
     connectedClients.delete(ws);
     
     // Broadcast the updated user list after removing the client
@@ -386,15 +380,23 @@ setInterval(() => {
   console.log(`[Health] Uptime: ${uptime}s, Clients: ${wss.clients.size}, Total connections: ${serverState.connections}, Messages: ${serverState.messages}, Errors: ${serverState.errors}, Users: ${users.size}`);
 }, 60000);
 
-// Cleanup interval - remove long disconnected users (more than 1 hour)
+// Cleanup interval - remove users that haven't been connected in a while
 setInterval(() => {
-  const now = Date.now();
-  const MAX_DISCONNECT_TIME = 60 * 60 * 1000; // 1 hour
+  // Count how many actual connected clients we have for each user
+  const userConnections = new Map();
   
+  connectedClients.forEach((client) => {
+    if (client.userId) {
+      const count = userConnections.get(client.userId) || 0;
+      userConnections.set(client.userId, count + 1);
+    }
+  });
+  
+  // Remove users with no active connections
   users.forEach((user, userId) => {
-    if (user.disconnected && (now - user.disconnected > MAX_DISCONNECT_TIME)) {
-      console.log(`Removing user ${userId} after extended disconnect period`);
+    if (!userConnections.has(userId)) {
+      console.log(`Removing disconnected user ${userId}`);
       users.delete(userId);
     }
   });
-}, 300000); // Check every 5 minutes
+}, 300000); // Every 5 minutes
