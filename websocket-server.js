@@ -1,28 +1,40 @@
 const WebSocket = require('ws');
 const http = require('http');
 
-// Create an HTTP server
+// Create HTTP server with better response
 const server = http.createServer((req, res) => {
-  // Add comprehensive CORS headers
+  // Set CORS headers to allow connections from client domains
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
-  res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type');
-  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS, POST');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Upgrade, Connection, Sec-WebSocket-Key, Sec-WebSocket-Version, Sec-WebSocket-Extensions, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
   
   // Handle OPTIONS requests for CORS preflight
   if (req.method === 'OPTIONS') {
-    res.writeHead(204);
+    res.writeHead(200);
     res.end();
     return;
   }
   
-  // Return server status as JSON for better debugging
-  res.writeHead(200, { 'Content-Type': 'application/json' });
+  // Explicitly handle WebSocket upgrade path
+  if (req.url === '/ws' || req.url === '/') {
+    // For GET requests to the WebSocket endpoint, provide a helpful message
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      status: 'online',
+      message: 'WebSocket server is running. Connect via WebSocket protocol.',
+      connections: wss?.clients?.size || 0,
+      uptime: process.uptime()
+    }));
+    return;
+  }
+  
+  // For any other path, return a 404
+  res.writeHead(404, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({
-    status: 'online',
-    message: 'WebSocket server is running',
-    clients: wss ? wss.clients.size : 0,
-    uptime: process.uptime()
+    error: 'Not found',
+    message: 'The requested resource was not found. WebSocket connections should be made to the root path.',
+    url: req.url
   }));
 });
 
@@ -136,6 +148,24 @@ wss.on('connection', (ws, req) => {
           return;
         } catch (error) {
           console.error('Error sending pong:', error);
+        }
+      }
+      
+      // Handle getUsers request
+      if (parsedMessage.type === 'getUsers') {
+        try {
+          // Create array of user objects from connected clients
+          const users = Array.from(connectedClients.entries()).map(([socket, client]) => ({
+            id: client.id,
+            name: `User ${client.id.substring(7, 13)}` // Simplified name generation
+          }));
+          
+          // Send the users list
+          ws.send(JSON.stringify(users));
+          console.log(`Sent user list with ${users.length} users to client ${clientId}`);
+          return;
+        } catch (error) {
+          console.error('Error sending users list:', error);
         }
       }
       
