@@ -1,6 +1,27 @@
 const WebSocket = require('ws');
 const http = require('http');
 
+// Store user data with unique identifiers and names
+const users = new Map();
+const adjectives = [
+  "Swift", "Brave", "Mighty", "Noble", "Clever", "Bright", "Quick", "Epic", 
+  "Cosmic", "Mystic", "Golden", "Silver", "Crystal", "Shadow", "Royal",
+  "Stellar", "Hyper", "Super", "Mega", "Ultra", "Alpha", "Omega", "Neo"
+];
+const nouns = [
+  "Warrior", "Knight", "Explorer", "Wizard", "Rogue", "Guardian", "Hunter", 
+  "Voyager", "Scholar", "Pioneer", "Champion", "Hero", "Captain", "Ace",
+  "Ranger", "Pilot", "Agent", "Commander", "Ninja", "Samurai", "Phoenix"
+];
+
+// Generate a unique name for a user
+function generateUserName() {
+  const randomAdj = adjectives[Math.floor(Math.random() * adjectives.length)];
+  const randomNoun = nouns[Math.floor(Math.random() * nouns.length)];
+  const randomNumber = Math.floor(Math.random() * 100);
+  return `${randomAdj}${randomNoun}${randomNumber}`;
+}
+
 // Create HTTP server with better response
 const server = http.createServer((req, res) => {
   // Set CORS headers to allow connections from client domains
@@ -99,9 +120,23 @@ wss.on('connection', (ws, req) => {
   const clientOrigin = req.headers.origin || 'Unknown';
   const clientId = `client-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   
-  // Track client
+  // Generate a unique user ID and name
+  const userId = `user-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const userName = generateUserName();
+  
+  // Store user data
+  users.set(userId, {
+    id: userId,
+    name: userName,
+    ip: clientIp,
+    origin: clientOrigin,
+    connected: Date.now()
+  });
+  
+  // Track client connection
   connectedClients.set(ws, {
     id: clientId,
+    userId: userId,
     ip: clientIp,
     origin: clientOrigin,
     connected: Date.now(),
@@ -110,7 +145,7 @@ wss.on('connection', (ws, req) => {
   
   serverState.connections++;
   
-  console.log(`Client connected from IP: ${clientIp}, Origin: ${clientOrigin}, Total: ${wss.clients.size}`);
+  console.log(`Client ${clientId} connected from IP: ${clientIp}, Origin: ${clientOrigin}, User: ${userName}, Total: ${wss.clients.size}`);
   
   // Send welcome message to client
   try {
@@ -118,6 +153,8 @@ wss.on('connection', (ws, req) => {
       type: 'welcome',
       message: 'Connected to Paraverse WebSocket Server',
       id: clientId,
+      userId: userId,
+      userName: userName,
       timestamp: Date.now()
     }));
   } catch (error) {
@@ -154,15 +191,18 @@ wss.on('connection', (ws, req) => {
       // Handle getUsers request
       if (parsedMessage.type === 'getUsers') {
         try {
-          // Create array of user objects from connected clients
-          const users = Array.from(connectedClients.entries()).map(([socket, client]) => ({
-            id: client.id,
-            name: `User ${client.id.substring(7, 13)}` // Simplified name generation
-          }));
+          // Create array of user objects from active connections
+          const activeUsers = Array.from(connectedClients.entries()).map(([socket, client]) => {
+            const userData = users.get(client.userId) || { id: client.userId, name: 'Unknown User' };
+            return {
+              id: userData.id,
+              name: userData.name
+            };
+          });
           
           // Send the users list
-          ws.send(JSON.stringify(users));
-          console.log(`Sent user list with ${users.length} users to client ${clientId}`);
+          ws.send(JSON.stringify(activeUsers));
+          console.log(`Sent user list with ${activeUsers.length} users to client ${clientId}`);
           return;
         } catch (error) {
           console.error('Error sending users list:', error);
@@ -188,6 +228,25 @@ wss.on('connection', (ws, req) => {
   // Close handler
   ws.on('close', (code, reason) => {
     console.log(`Client ${clientId} disconnected. Code: ${code}, Reason: ${reason || 'No reason provided'}`);
+    
+    // Get the client data
+    const clientData = connectedClients.get(ws);
+    if (clientData && clientData.userId) {
+      // Check if this userId is used by any other connections
+      let userIsStillConnected = false;
+      connectedClients.forEach((client) => {
+        if (client.userId === clientData.userId && client.id !== clientData.id) {
+          userIsStillConnected = true;
+        }
+      });
+      
+      // Only remove user data if no other connections are using it
+      if (!userIsStillConnected) {
+        users.delete(clientData.userId);
+        console.log(`Removed user ${clientData.userId} from users list`);
+      }
+    }
+    
     connectedClients.delete(ws);
   });
   
@@ -217,5 +276,5 @@ server.listen(PORT, '0.0.0.0', () => {
 // Health check interval - logs server status every minute
 setInterval(() => {
   const uptime = Math.floor((Date.now() - serverState.startTime) / 1000);
-  console.log(`[Health] Uptime: ${uptime}s, Clients: ${wss.clients.size}, Total connections: ${serverState.connections}, Messages: ${serverState.messages}, Errors: ${serverState.errors}`);
+  console.log(`[Health] Uptime: ${uptime}s, Clients: ${wss.clients.size}, Total connections: ${serverState.connections}, Messages: ${serverState.messages}, Errors: ${serverState.errors}, Users: ${users.size}`);
 }, 60000);
