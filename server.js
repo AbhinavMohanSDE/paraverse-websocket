@@ -290,7 +290,7 @@ class WebSocketServer {
   }
   
 // This is the updated handleIdentity method for server.js
-handleIdentity(ws, parsedMessage, clientId) {
+async handleIdentity(ws, parsedMessage, clientId) {
   try {
     const browserFingerprint = parsedMessage.browserFingerprint;
     const providedUserId = parsedMessage.userId;
@@ -301,8 +301,8 @@ handleIdentity(ws, parsedMessage, clientId) {
     // Update client with the browser fingerprint
     this.clientManager.updateClientBrowserFingerprint(ws, browserFingerprint);
     
-    // Process user identity and send welcome message
-    const userData = this.userManager.processUserIdentity(
+    // Process user identity and send welcome message - now async
+    const userData = await this.userManager.processUserIdentity(
       browserFingerprint, 
       providedUserId, 
       providedUserName, 

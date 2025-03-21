@@ -1,4 +1,5 @@
 const WebSocket = require('ws');
+const fetch = require('node-fetch'); // Make sure to install this: npm install node-fetch
 
 class UserManager {
   constructor() {
@@ -13,6 +14,12 @@ class UserManager {
     
     // Track user stats for the current session
     this.userStats = new Map();
+    
+    // Cache for IP-to-location mappings to avoid repeated API calls
+    this.locationCache = new Map();
+    
+    // Cache expiration time (24 hours in milliseconds)
+    this.CACHE_EXPIRATION = 24 * 60 * 60 * 1000;
   }
   
   /**
@@ -61,7 +68,7 @@ class UserManager {
     
     if (action === 'meteorSent') {
       stats.meteorsSent += 1;
-    } else if (action === 'objectShot') {
+    } else if (action === 'objectSShot') {
       stats.objectsShot += 1;
     }
     
@@ -87,36 +94,151 @@ class UserManager {
   }
   
   /**
-   * Get approximate location from IP address
-   * This is a simplified version - in a production environment,
-   * you would use a more robust geolocation service
+   * Format location for display
    */
-  getLocationFromIp(clientIp) {
-    // Simple location determination based on IP patterns
-    // In a real app, you'd use a proper geolocation API or service
-    
+  formatLocation(city, country) {
+    if (city && country) {
+      return `${city}, ${country}`;
+    } else if (city) {
+      return city;
+    } else if (country) {
+      return country;
+    }
+    return 'Unknown';
+  }
+  
+  /**
+   * Get approximate location from IP address
+   * This makes real API calls to improve location accuracy
+   */
+  async getLocationFromIp(clientIp) {
     // Remove IPv6 prefix if present
     let ip = clientIp;
     if (ip.indexOf('::ffff:') === 0) {
       ip = ip.substring(7);
     }
     
-    // Local IP addresses
-    if (ip === '127.0.0.1' || ip === 'localhost' || ip.startsWith('192.168.') || ip.startsWith('10.')) {
+    // Check for local IPs
+    if (ip === '127.0.0.1' || ip === 'localhost' || ip.startsWith('192.168.') || 
+        ip.startsWith('10.') || ip.startsWith('172.16.')) {
       return 'Local Network';
     }
     
-    // This is very simplified - in a real app, you would use a proper IP geolocation service
-    // For this example, we'll just return a placeholder
-    return 'Earth';
+    // Check if we have a cached result that's not expired
+    if (this.locationCache.has(ip)) {
+      const cachedData = this.locationCache.get(ip);
+      const now = Date.now();
+      
+      if (now - cachedData.timestamp < this.CACHE_EXPIRATION) {
+        console.log(`Using cached location for IP ${ip}: ${cachedData.location}`);
+        return cachedData.location;
+      }
+      
+      // If expired, remove from cache
+      this.locationCache.delete(ip);
+    }
+    
+    // Try multiple API services for best reliability
+    // Initialize variables for location data
+    let city = '';
+    let country = '';
+    let locationFound = false;
+    
+    // Try first API (ip-api.com)
+    try {
+      console.log(`Fetching location for IP ${ip} using ip-api.com`);
+      const response = await fetch(`http://ip-api.com/json/${ip}`);
+      const data = await response.json();
+      
+      if (data.status === 'success') {
+        city = data.city || '';
+        country = data.country || '';
+        
+        if (city || country) {
+          locationFound = true;
+        }
+      }
+    } catch (error) {
+      console.warn('First location API failed:', error);
+    }
+    
+    // Try second API if first failed (ipapi.co)
+    if (!locationFound) {
+      try {
+        console.log(`Fetching location for IP ${ip} using ipapi.co`);
+        const response = await fetch(`https://ipapi.co/${ip}/json/`);
+        const data = await response.json();
+        
+        city = data.city || '';
+        country = data.country_name || '';
+        
+        if (city || country) {
+          locationFound = true;
+        }
+      } catch (error) {
+        console.warn('Second location API failed:', error);
+      }
+    }
+    
+    // Try third API if others failed (ipinfo.io)
+    if (!locationFound) {
+      try {
+        console.log(`Fetching location for IP ${ip} using ipinfo.io`);
+        const response = await fetch(`https://ipinfo.io/${ip}/json`);
+        const data = await response.json();
+        
+        city = data.city || '';
+        country = data.country || '';
+        
+        // Convert country code to name if possible
+        if (country && country.length === 2) {
+          // Server-side doesn't have Intl.DisplayNames so use a simple mapping
+          const countryCodeMap = {
+            "US": "United States",
+            "CA": "Canada",
+            "GB": "United Kingdom",
+            "AU": "Australia",
+            "DE": "Germany",
+            "FR": "France",
+            "JP": "Japan",
+            "CN": "China",
+            "IN": "India",
+            "BR": "Brazil",
+            // Add more as needed
+          };
+          country = countryCodeMap[country] || country;
+        }
+        
+        if (city || country) {
+          locationFound = true;
+        }
+      } catch (error) {
+        console.warn('Third location API failed:', error);
+      }
+    }
+    
+    // Format and cache the result
+    const formattedLocation = this.formatLocation(city, country);
+    
+    // Use a fallback if all APIs failed
+    const finalLocation = locationFound ? formattedLocation : 'Earth';
+    
+    // Cache the result
+    this.locationCache.set(ip, {
+      location: finalLocation,
+      timestamp: Date.now()
+    });
+    
+    console.log(`Determined location for IP ${ip}: ${finalLocation}`);
+    return finalLocation;
   }
   
   /**
    * Process user identity and determine if they're new or returning
    */
-  processUserIdentity(browserFingerprint, providedUserId, providedUserName, clientIp, clientOrigin) {
+  async processUserIdentity(browserFingerprint, providedUserId, providedUserName, clientIp, clientOrigin) {
     // Get approximate location from IP
-    const location = this.getLocationFromIp(clientIp);
+    const location = await this.getLocationFromIp(clientIp);
     
     // Check if this browser fingerprint already has a user
     const existingUserData = this.browserToUser.get(browserFingerprint);
@@ -138,15 +260,29 @@ class UserManager {
         console.log(`Updated user name for ${existingUserData.userId} to ${providedUserName}`);
       }
       
+      // Update the location if it's changed or not set yet
+      if (location && (!existingUserData.location || existingUserData.location === 'Unknown' || 
+          existingUserData.location === 'Earth' || existingUserData.location === 'Local Network')) {
+        existingUserData.location = location;
+        
+        // Also update in users map
+        const userData = this.users.get(existingUserData.userId);
+        if (userData) {
+          userData.location = location;
+        }
+        
+        console.log(`Updated location for ${existingUserData.userId} to ${location}`);
+      }
+      
       // Ensure we have stats for this user
-      const stats = this.initUserStats(existingUserData.userId, existingUserData.firstJoined, location);
+      const stats = this.initUserStats(existingUserData.userId, existingUserData.firstJoined, existingUserData.location);
       
       return {
         userId: existingUserData.userId,
         userName: existingUserData.userName,
         isReturning: true,
         firstJoined: existingUserData.firstJoined,
-        location: location
+        location: existingUserData.location || location
       };
     } 
     // If this is a new browser or has a provided userId that needs to be stored
@@ -184,7 +320,7 @@ class UserManager {
       // Initialize stats for this user
       this.initUserStats(userId, firstJoined, location);
       
-      console.log(`Registered new browser: ${browserFingerprint} as user: ${userId}, ${userName}`);
+      console.log(`Registered new browser: ${browserFingerprint} as user: ${userId}, ${userName}, location: ${location}`);
       
       return {
         userId,
