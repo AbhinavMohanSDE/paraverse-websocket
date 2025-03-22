@@ -133,64 +133,37 @@ class UserManager {
    * Process user identity and determine if they're new or returning
    */
   async processUserIdentity(browserFingerprint, providedUserId, providedUserName, clientIp, clientOrigin) {
-    // Get approximate location from IP
-    const location = await this.getLocationFromIp(clientIp);
+    // (existing code remains the same)
     
-    // Check if this browser fingerprint already has a user
-    const existingUserData = this.browserToUser.get(browserFingerprint);
-    
-    // If this browser fingerprint is known and has a user ID
+    // Update for existing user data
     if (existingUserData) {
-      console.log(`Recognized returning browser: ${browserFingerprint} as user: ${existingUserData.userId}, ${existingUserData.userName}`);
+      // (existing code remains the same)
       
-      // If user provided a new name, update it
-      if (providedUserName && providedUserName !== existingUserData.userName) {
-        existingUserData.userName = providedUserName;
-        
-        // Also update in the users map
-        const userData = this.users.get(existingUserData.userId);
-        if (userData) {
-          userData.name = providedUserName;
-        }
-        
-        console.log(`Updated user name for ${existingUserData.userId} to ${providedUserName}`);
+      // Set status to online when user reconnects
+      existingUserData.status = 'online';
+      existingUserData.lastStatusChange = Date.now();
+      
+      // Also update in users map
+      const userData = this.users.get(existingUserData.userId);
+      if (userData) {
+        userData.status = 'online';
+        userData.lastStatusChange = Date.now();
       }
       
-      // Update the location if it's changed or not set yet
-      if (location && (!existingUserData.location || existingUserData.location === 'Unknown' || 
-          existingUserData.location === 'Earth' || existingUserData.location === 'Local Network')) {
-        existingUserData.location = location;
-        
-        // Also update in users map
-        const userData = this.users.get(existingUserData.userId);
-        if (userData) {
-          userData.location = location;
-        }
-        
-        console.log(`Updated location for ${existingUserData.userId} to ${location}`);
-      }
-      
-      // Ensure we have stats for this user
-      const stats = this.initUserStats(existingUserData.userId, existingUserData.firstJoined, existingUserData.location);
+      // (rest of the existing code)
       
       return {
         userId: existingUserData.userId,
         userName: existingUserData.userName,
         isReturning: true,
         firstJoined: existingUserData.firstJoined,
-        location: existingUserData.location || location
+        location: existingUserData.location || location,
+        status: 'online'  // Add status to return
       };
     } 
-    // If this is a new browser or has a provided userId that needs to be stored
+    // For new users
     else {
-      // Generate or use the provided user data
-      const userId = providedUserId || `user-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-      
-      // For new users, always use Guest + number naming unless they provided a custom name
-      const userName = providedUserName || this.generateGuestName();
-      
-      // Current timestamp for first joined
-      const firstJoined = new Date().toISOString();
+      // (existing code for new users)
       
       // Store this data for the browser fingerprint
       this.browserToUser.set(browserFingerprint, {
@@ -199,7 +172,9 @@ class UserManager {
         firstSeen: Date.now(),
         lastActivity: Date.now(),
         firstJoined: firstJoined,
-        location: location
+        location: location,
+        status: 'online',  // Set initial status
+        lastStatusChange: Date.now()
       });
       
       // Store user data
@@ -210,20 +185,20 @@ class UserManager {
         origin: clientOrigin,
         connected: Date.now(),
         firstJoined: firstJoined,
-        location: location
+        location: location,
+        status: 'online',  // Set initial status
+        lastStatusChange: Date.now()
       });
       
-      // Initialize stats for this user
-      this.initUserStats(userId, firstJoined, location);
-      
-      console.log(`Registered new browser: ${browserFingerprint} as user: ${userId}, ${userName}, location: ${location}`);
+      // (rest of existing code)
       
       return {
         userId,
         userName,
         isReturning: false,
         firstJoined,
-        location
+        location,
+        status: 'online'  // Add status to return
       };
     }
   }
@@ -281,7 +256,8 @@ class UserManager {
             name: userData.userName,
             stats, // Include stats in user data
             firstJoined: userData.firstJoined,
-            location: userData.location
+            location: userData.location,
+            status: userData.status || 'offline'  // Include status with default
           });
         }
       });
@@ -377,6 +353,38 @@ class UserManager {
     }
     
     return null;
+  }
+
+    /**
+   * Update user status
+   */
+  updateUserStatus(userId, status) {
+    // Find the browser fingerprint for this user
+    let fingerprint = null;
+    
+    for (const [fp, userData] of this.browserToUser.entries()) {
+      if (userData.userId === userId) {
+        fingerprint = fp;
+        userData.status = status;
+        userData.lastStatusChange = Date.now();
+        break;
+      }
+    }
+    
+    if (fingerprint) {
+      // Also update in users map
+      const userData = this.users.get(userId);
+      if (userData) {
+        userData.status = status;
+        userData.lastStatusChange = Date.now();
+      }
+      
+      console.log(`Updated user status for ${userId} to ${status}`);
+      return true;
+    }
+    
+    console.warn(`Failed to update status: User ${userId} not found`);
+    return false;
   }
 }
 

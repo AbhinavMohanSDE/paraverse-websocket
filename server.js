@@ -400,6 +400,7 @@ async handleIdentity(ws, parsedMessage, clientId) {
         userName: userData.userName,
         firstJoined: userData.firstJoined,
         location: userData.location,
+        status: userData.status || 'online',  // Include status in welcome message
         timestamp: Date.now()
       }));
     } catch (error) {

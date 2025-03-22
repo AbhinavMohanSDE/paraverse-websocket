@@ -91,6 +91,7 @@ class ClientManager {
    * Returns: boolean indicating if we should broadcast user list update
    */
   removeClient(ws) {
+    console.log(`Removing client...`);
     // Get the client data
     const clientData = this.connectedClients.get(ws);
     this.connectedClients.delete(ws);
@@ -101,9 +102,15 @@ class ClientManager {
     if (clientData && clientData.browserFingerprint) {
       let browserStillConnected = this.hasBrowserConnections(clientData.browserFingerprint);
       
-      // If the browser is no longer connected, we can remove it
+      // If the browser is no longer connected, set the user to offline
       if (!browserStillConnected) {
         console.log(`Browser ${clientData.browserFingerprint} has no more connections`);
+        
+        // Set user status to offline if we have a userId
+        if (clientData.userId) {
+          this.userManager.updateUserStatus(clientData.userId, 'offline');
+          console.log(`Set user ${clientData.userId} status to offline`);
+        }
       } else {
         // Browser still has other connections, no need to update the user list
         console.log(`Browser ${clientData.browserFingerprint} still has other connections`);
