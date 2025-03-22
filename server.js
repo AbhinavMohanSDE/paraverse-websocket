@@ -356,7 +356,7 @@ class WebSocketServer {
       } catch (error) {
         console.error('Error handling world update:', error);
       }
-      }
+    }
       
       // Broadcast the message to all connected clients (except sender)
       this.broadcastMessage(ws, msgStr);
