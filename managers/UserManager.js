@@ -476,6 +476,106 @@ class UserManager {
     
     return null;
   }
+
+  /**
+   * Record damage dealt by a user
+   */
+  recordDamageDealt(userId, amount) {
+    const stats = this.getUserStats(userId);
+    
+    if (!stats.damageDealt) {
+      stats.damageDealt = 0;
+    }
+    
+    stats.damageDealt += amount;
+    console.log(`User ${userId} has dealt a total of ${stats.damageDealt} damage`);
+    return stats;
+  }
+
+  /**
+   * Record damage taken by a user
+   */
+  recordDamageTaken(userId, amount) {
+    const stats = this.getUserStats(userId);
+    
+    if (!stats.damageTaken) {
+      stats.damageTaken = 0;
+    }
+    
+    stats.damageTaken += amount;
+    console.log(`User ${userId} has taken a total of ${stats.damageTaken} damage`);
+    return stats;
+  }
+
+  /**
+   * Record a player kill
+   */
+  recordPlayerKill(killerUserId, victimUserId) {
+    const killerStats = this.getUserStats(killerUserId);
+    const victimStats = this.getUserStats(victimUserId);
+    
+    // Track kills for killer
+    if (!killerStats.kills) {
+      killerStats.kills = 0;
+    }
+    killerStats.kills += 1;
+    
+    // Track deaths for victim
+    if (!victimStats.deaths) {
+      victimStats.deaths = 0;
+    }
+    victimStats.deaths += 1;
+    
+    console.log(`User ${killerUserId} killed user ${victimUserId}`);
+    return killerStats;
+  }
+
+  /**
+   * Initialize stats for a user - updated with combat stats
+   */
+  initUserStats(userId, firstJoined, location) {
+    if (!this.userStats.has(userId)) {
+      this.userStats.set(userId, {
+        meteorsSent: 0,
+        objectsShot: 0,
+        firstJoined: firstJoined || new Date().toISOString(),
+        location: location || 'Unknown',
+        status: 'online',
+        // Combat statistics
+        health: 100,
+        damageDealt: 0,
+        damageTaken: 0,
+        kills: 0,
+        deaths: 0,
+        projectilesFired: 0,
+        projectileHits: 0
+      });
+    }
+    return this.userStats.get(userId);
+  }
+
+  /**
+   * Update user stats - enhanced with projectile tracking
+   */
+  updateUserStats(userId, action, amount = 1) {
+    const stats = this.getUserStats(userId);
+    
+    if (action === 'meteorSent') {
+      stats.meteorsSent += 1;
+    } else if (action === 'objectShot') {
+      stats.objectsShot += 1;
+    } else if (action === 'projectileFired') {
+      if (!stats.projectilesFired) stats.projectilesFired = 0;
+      stats.projectilesFired += amount;
+    } else if (action === 'projectileHit') {
+      if (!stats.projectileHits) stats.projectileHits = 0;
+      stats.projectileHits += amount;
+    }
+    
+    console.log(`Updated stats for user ${userId}: ${JSON.stringify(stats)}`);
+    return stats;
+  }
+  
 }
 
 module.exports = UserManager;

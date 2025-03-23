@@ -356,7 +356,183 @@ class WebSocketServer {
       } catch (error) {
         console.error('Error handling world update:', error);
       }
-    }
+      }
+
+      // Handle projectile messages
+      if (parsedMessage.type === 'projectile' && 
+        parsedMessage.sourceId && 
+        parsedMessage.position && 
+        parsedMessage.direction) {
+      try {
+        const { sourceId, position, direction, damage, speed, comboLevel, id } = parsedMessage;
+        
+        // Validate the projectile data
+        if (typeof position.x !== 'number' || 
+            typeof position.y !== 'number' || 
+            typeof position.z !== 'number' || 
+            typeof direction.x !== 'number' || 
+            typeof direction.y !== 'number' || 
+            typeof direction.z !== 'number') {
+          console.warn('Invalid projectile data:', parsedMessage);
+          return;
+        }
+        
+        // Validate damage and speed (optional)
+        const validatedDamage = typeof damage === 'number' && damage >= 0 && damage <= 100 
+          ? damage 
+          : 20; // Default to 20 if invalid
+        
+        const validatedSpeed = typeof speed === 'number' && speed > 0 && speed <= 2 
+          ? speed 
+          : 0.5; // Default to 0.5 if invalid
+        
+        console.log(`Projectile from user ${sourceId}: pos(${position.x.toFixed(2)}, ${position.y.toFixed(2)}, ${position.z.toFixed(2)}), damage: ${validatedDamage}, combo: ${comboLevel || 1}`);
+        
+        // Broadcast the projectile to all other clients
+        this.wss.clients.forEach((client) => {
+          if (client !== ws && client.readyState === WebSocket.OPEN) {
+            try {
+              client.send(JSON.stringify({
+                type: 'projectile',
+                id: id || `server-${Date.now()}`,
+                sourceId,
+                position,
+                direction,
+                damage: validatedDamage,
+                speed: validatedSpeed,
+                comboLevel: comboLevel || 1
+              }));
+            } catch (error) {
+              console.error('Error broadcasting projectile:', error);
+            }
+          }
+        });
+        
+        return;
+      } catch (error) {
+        console.error('Error handling projectile message:', error);
+      }
+      }
+
+      // Handle projectile hit messages
+      if (parsedMessage.type === 'projectileHit' && 
+        parsedMessage.sourceId && 
+        parsedMessage.targetId && 
+        parsedMessage.projectileId) {
+      try {
+        const { sourceId, targetId, projectileId, position, damage } = parsedMessage;
+        
+        console.log(`Projectile hit: ${projectileId} from ${sourceId} hit ${targetId} for ${damage} damage`);
+        
+        // Broadcast the hit to all clients
+        this.wss.clients.forEach((client) => {
+          if (client.readyState === WebSocket.OPEN) {
+            try {
+              client.send(JSON.stringify({
+                type: 'projectileHit',
+                projectileId,
+                sourceId,
+                targetId,
+                position: position || { x: 0, y: 0, z: 0 },
+                damage: typeof damage === 'number' ? damage : 20
+              }));
+            } catch (error) {
+              console.error('Error broadcasting projectile hit:', error);
+            }
+          }
+        });
+        
+        return;
+      } catch (error) {
+        console.error('Error handling projectile hit message:', error);
+      }
+      }
+
+      // Handle damage messages
+      if (parsedMessage.type === 'damage' && 
+        parsedMessage.sourceId && 
+        parsedMessage.targetId && 
+        typeof parsedMessage.amount === 'number') {
+      try {
+        const { sourceId, targetId, amount } = parsedMessage;
+        
+        // Validate damage amount
+        const validatedAmount = amount >= 0 && amount <= 100 ? amount : 20;
+        
+        console.log(`Damage: ${sourceId} dealt ${validatedAmount} damage to ${targetId}`);
+        
+        // Look up the target user
+        const targetUser = this.userManager.getUserById(targetId);
+        
+        // Look up the source user
+        const sourceUser = this.userManager.getUserById(sourceId);
+        
+        if (!targetUser) {
+          console.warn(`Damage target user ${targetId} not found`);
+        }
+        
+        if (!sourceUser) {
+          console.warn(`Damage source user ${sourceId} not found`);
+        }
+        
+        // You could add stats tracking here if desired
+        // Example: this.userManager.recordDamageDealt(sourceId, validatedAmount);
+        // Example: this.userManager.recordDamageTaken(targetId, validatedAmount);
+        
+        // Broadcast the damage to all clients except the sender
+        this.wss.clients.forEach((client) => {
+          if (client !== ws && client.readyState === WebSocket.OPEN) {
+            try {
+              client.send(JSON.stringify({
+                type: 'damage',
+                sourceId,
+                targetId,
+                amount: validatedAmount
+              }));
+            } catch (error) {
+              console.error('Error broadcasting damage:', error);
+            }
+          }
+        });
+        
+        return;
+      } catch (error) {
+        console.error('Error handling damage message:', error);
+      }
+      }
+
+      // Handle health update messages
+      if (parsedMessage.type === 'healthUpdate' && 
+        parsedMessage.userId && 
+        typeof parsedMessage.health === 'number') {
+      try {
+        const { userId, health } = parsedMessage;
+        
+        // Validate health value
+        const validatedHealth = health >= 0 && health <= 100 ? health : 100;
+        
+        console.log(`Health update: ${userId} health now ${validatedHealth}`);
+        
+        // Broadcast the health update to all other clients
+        this.wss.clients.forEach((client) => {
+          if (client !== ws && client.readyState === WebSocket.OPEN) {
+            try {
+              client.send(JSON.stringify({
+                type: 'healthUpdate',
+                userId,
+                health: validatedHealth
+              }));
+            } catch (error) {
+              console.error('Error broadcasting health update:', error);
+            }
+          }
+        });
+        
+        return;
+      } catch (error) {
+        console.error('Error handling health update message:', error);
+      }
+      }
       
       // Broadcast the message to all connected clients (except sender)
       this.broadcastMessage(ws, msgStr);
