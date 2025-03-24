@@ -5,6 +5,7 @@ const ClientManager = require('./managers/ClientManager');
 const ChatManager = require('./managers/ChatManager');
 const ServerState = require('./utils/ServerState');
 const { setupErrorHandlers } = require('./utils/ErrorHandlers');
+const VoiceManager = require('./managers/VoiceManager');
 
 // Create main server class
 class WebSocketServer {
@@ -16,6 +17,7 @@ class WebSocketServer {
     this.serverState = new ServerState();
     this.clientManager = new ClientManager(this.userManager, this.serverState);
     this.chatManager = new ChatManager();
+    this.voiceManager = new VoiceManager();
     
     // Create HTTP server
     this.server = this.createHttpServer();
@@ -534,6 +536,165 @@ class WebSocketServer {
       }
       }
       
+      // Handle voice join requests
+      if (parsedMessage.type === 'voiceJoin' && parsedMessage.userId) {
+        try {
+          const userId = parsedMessage.userId;
+          
+          // Check if user exists
+          const user = this.userManager.getUserById(userId);
+          if (!user) {
+            console.warn(`Voice join request from unknown user: ${userId}`);
+            return;
+          }
+          
+          // Add user to voice participants
+          const added = this.voiceManager.addParticipant(userId);
+          
+          if (added) {
+            // Broadcast join message to all clients
+            this.wss.clients.forEach((client) => {
+              if (client.readyState === WebSocket.OPEN) {
+                try {
+                  client.send(JSON.stringify({
+                    type: 'voiceJoin',
+                    userId
+                  }));
+                } catch (error) {
+                  console.error('Error broadcasting voice join:', error);
+                }
+              }
+            });
+            
+            // Also send the current participants list
+            this.voiceManager.broadcastParticipantsList(this.wss);
+          }
+          
+          console.log(`Processed voice join for user ${userId}`);
+          return;
+        } catch (error) {
+          console.error('Error handling voice join request:', error);
+        }
+      }
+
+      // Handle voice leave requests
+      if (parsedMessage.type === 'voiceLeave' && parsedMessage.userId) {
+        try {
+          const userId = parsedMessage.userId;
+          
+          // Remove user from voice participants
+          const removed = this.voiceManager.removeParticipant(userId);
+          
+          if (removed) {
+            // Broadcast leave message to all clients
+            this.wss.clients.forEach((client) => {
+              if (client.readyState === WebSocket.OPEN) {
+                try {
+                  client.send(JSON.stringify({
+                    type: 'voiceLeave',
+                    userId
+                  }));
+                } catch (error) {
+                  console.error('Error broadcasting voice leave:', error);
+                }
+              }
+            });
+            
+            // Also send the updated participants list
+            this.voiceManager.broadcastParticipantsList(this.wss);
+          }
+          
+          console.log(`Processed voice leave for user ${userId}`);
+          return;
+        } catch (error) {
+          console.error('Error handling voice leave request:', error);
+        }
+      }
+
+      // Handle voice activity (talking) updates
+      if (parsedMessage.type === 'voiceActivity' && 
+          parsedMessage.userId && 
+          typeof parsedMessage.isTalking === 'boolean') {
+        try {
+          const { userId, isTalking } = parsedMessage;
+          
+          // Only process if user is a voice participant
+          if (this.voiceManager.isParticipant(userId)) {
+            // Update talking state
+            this.voiceManager.updateTalkingState(userId, isTalking);
+            
+            // Broadcast activity message to all other clients
+            this.wss.clients.forEach((client) => {
+              if (client !== ws && client.readyState === WebSocket.OPEN) {
+                try {
+                  client.send(JSON.stringify({
+                    type: 'voiceActivity',
+                    userId,
+                    isTalking
+                  }));
+                } catch (error) {
+                  console.error('Error broadcasting voice activity:', error);
+                }
+              }
+            });
+          }
+          
+          // Don't log every activity message to avoid console spam
+          if (isTalking) {
+            console.log(`User ${userId} is talking`);
+          }
+          return;
+        } catch (error) {
+          console.error('Error handling voice activity update:', error);
+        }
+      }
+
+      // Handle voice mute updates
+      if (parsedMessage.type === 'voiceMute' && 
+          parsedMessage.userId && 
+          typeof parsedMessage.muted === 'boolean') {
+        try {
+          const { userId, muted } = parsedMessage;
+          
+          // Only process if user is a voice participant
+          if (this.voiceManager.isParticipant(userId)) {
+            // Update muted state
+            this.voiceManager.updateMutedState(userId, muted);
+            
+            // Broadcast mute message to all clients
+            this.wss.clients.forEach((client) => {
+              if (client.readyState === WebSocket.OPEN) {
+                try {
+                  client.send(JSON.stringify({
+                    type: 'voiceMute',
+                    userId,
+                    muted
+                  }));
+                } catch (error) {
+                  console.error('Error broadcasting voice mute update:', error);
+                }
+              }
+            });
+            
+            console.log(`User ${userId} ${muted ? 'muted' : 'unmuted'} their microphone`);
+          }
+          return;
+        } catch (error) {
+          console.error('Error handling voice mute update:', error);
+        }
+      }
+
+      // Handle get voice participants request
+      if (parsedMessage.type === 'getVoiceParticipants') {
+        try {
+          console.log('Received request for voice participants list');
+          this.voiceManager.broadcastParticipantsList(this.wss);
+          return;
+        } catch (error) {
+          console.error('Error handling get voice participants request:', error);
+        }
+      }
+
       // Broadcast the message to all connected clients (except sender)
       this.broadcastMessage(ws, msgStr);
     } catch (error) {
@@ -596,6 +757,33 @@ async handleIdentity(ws, parsedMessage, clientId) {
     // Check if we need to broadcast user list after disconnection
     const shouldBroadcast = this.clientManager.removeClient(ws);
     
+    // Get the userId for the disconnected client
+    const userId = this.clientManager.getClientUserId(ws);
+    if (userId) {
+      // Check if the user was in a voice chat
+      const wasInVoice = this.voiceManager.handleUserDisconnect(userId);
+      
+      if (wasInVoice) {
+        // Broadcast voice leave message to all remaining clients
+        this.wss.clients.forEach((client) => {
+          if (client.readyState === WebSocket.OPEN) {
+            try {
+              client.send(JSON.stringify({
+                type: 'voiceLeave',
+                userId
+              }));
+            } catch (error) {
+              console.error('Error broadcasting voice leave for disconnected user:', error);
+            }
+          }
+        });
+        
+        // Also broadcast updated voice participants list
+        this.voiceManager.broadcastParticipantsList(this.wss);
+        console.log(`User ${userId} was removed from voice chat due to disconnection`);
+      }
+    }
+
     if (shouldBroadcast) {
       this.userManager.broadcastUserList(this.wss);
     }
