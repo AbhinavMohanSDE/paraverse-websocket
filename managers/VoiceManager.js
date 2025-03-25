@@ -188,4 +188,4 @@ class VoiceManager {
   }
 }
 
-export default VoiceManager;
+module.exports = UserManager;
