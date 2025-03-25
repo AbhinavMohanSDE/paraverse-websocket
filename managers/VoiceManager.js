@@ -186,4 +186,4 @@ class VoiceManager {
   }
 }
 
-module.exports = UserManager;
+module.exports = VoiceManager;
