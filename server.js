@@ -124,6 +124,13 @@ class WebSocketServer {
     const clientIp = req.socket.remoteAddress;
     const clientOrigin = req.headers.origin || 'Unknown';
     
+    // Implement rate limiting by IP address
+    if (!this.clientManager.shouldAllowConnection(clientIp)) {
+      console.warn(`Connection from ${clientIp} rate limited, closing.`);
+      ws.close(1008, 'Rate limit exceeded');
+      return;
+    }
+    
     // Register client with client manager
     const clientId = this.clientManager.registerClient(ws, clientIp, clientOrigin);
     this.serverState.incrementConnections();
@@ -142,6 +149,7 @@ class WebSocketServer {
       console.error(`WebSocket error for client ${clientId}:`, error);
     });
   }
+  
   
   handleMessage(ws, message, clientId) {
     try {
@@ -746,6 +754,13 @@ class WebSocketServer {
         this.clientManager.getClientOrigin(ws)
       );
       
+      // Check if this user has too many connections already
+      if (this.clientManager.hasUserExceededConnectionLimit(userData.userId)) {
+        console.warn(`User ${userData.userId} has exceeded connection limit, closing this connection`);
+        ws.close(1013, 'Too many connections for this user');
+        return;
+      }
+      
       // Update client with user ID
       this.clientManager.updateClientUserId(ws, userData.userId);
       
@@ -763,7 +778,9 @@ class WebSocketServer {
           firstJoined: userData.firstJoined,
           location: userData.location,
           status: userData.status || 'online',
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          // Include if there was a conflict that was resolved
+          identityConflictResolved: userData.conflictDetected || false
         }));
         
         // Also log this connection for debugging purposes

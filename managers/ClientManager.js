@@ -195,6 +195,75 @@ class ClientManager {
     
     return false;
   }
+
+  /**
+   * Rate limit connections from a single IP
+   * Returns true if the connection should be allowed, false if it should be throttled
+   */
+  shouldAllowConnection(clientIp) {
+    // Initialize IP tracking if not exists
+    if (!this.ipConnections) {
+      this.ipConnections = new Map();
+    }
+    
+    const now = Date.now();
+    const ipData = this.ipConnections.get(clientIp) || {
+      connectionAttempts: [],
+      blockedUntil: 0
+    };
+    
+    // Check if IP is currently blocked
+    if (ipData.blockedUntil > now) {
+      console.warn(`Connection from ${clientIp} blocked until ${new Date(ipData.blockedUntil).toISOString()}`);
+      return false;
+    }
+    
+    // Clean up old connection attempts (older than 60 seconds)
+    ipData.connectionAttempts = ipData.connectionAttempts.filter(time => now - time < 60000);
+    
+    // Add this attempt
+    ipData.connectionAttempts.push(now);
+    
+    // Check if too many connection attempts
+    if (ipData.connectionAttempts.length > 20) {
+      // More than 20 connections in 60 seconds - block for 2 minutes
+      ipData.blockedUntil = now + 120000; // 2 minutes
+      console.warn(`Too many connections from ${clientIp}, blocking for 2 minutes`);
+      this.ipConnections.set(clientIp, ipData);
+      return false;
+    }
+    
+    // Update IP data
+    this.ipConnections.set(clientIp, ipData);
+    return true;
+  }
+
+  /**
+   * Find all connections for a given userId
+   */
+  getConnectionsByUserId(userId) {
+    const connections = [];
+    
+    for (const [ws, clientData] of this.connectedClients.entries()) {
+      if (clientData.userId === userId) {
+        connections.push(ws);
+      }
+    }
+    
+    return connections;
+  }
+
+  /**
+   * Check if a user has too many concurrent connections
+   * Returns true if the connection limit is exceeded
+   */
+  hasUserExceededConnectionLimit(userId) {
+    // Allow at most 5 concurrent connections per user
+    const MAX_CONNECTIONS_PER_USER = 5;
+    
+    const connections = this.getConnectionsByUserId(userId);
+    return connections.length > MAX_CONNECTIONS_PER_USER;
+  }
 }
 
 module.exports = ClientManager;

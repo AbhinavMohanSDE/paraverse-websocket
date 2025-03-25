@@ -132,18 +132,37 @@ class UserManager {
   
   /**
    * Process user identity and determine if they're new or returning
-   * Fixed to prevent user ID collisions across different browser fingerprints
+   * Improved to handle fingerprint variations and prevent identity conflicts
    */
   async processUserIdentity(browserFingerprint, providedUserId, providedUserName, clientIp, clientOrigin) {
     // Get approximate location from IP
     const location = await this.getLocationFromIp(clientIp);
     
-    // Check if this browser fingerprint already has a user
-    const existingUserData = this.browserToUser.get(browserFingerprint);
+    // Clean up the fingerprint to be more stable (remove timestamp if present)
+    const stableFingerprint = this.getStableFingerprint(browserFingerprint);
+    
+    // 1. First check: Do we know this exact browser fingerprint?
+    let existingUserData = this.browserToUser.get(stableFingerprint);
+    
+    // 2. If not exact match, check for similar fingerprints
+    if (!existingUserData && providedUserId) {
+      // Look for any fingerprint associated with this userId
+      for (const [fp, userData] of this.browserToUser.entries()) {
+        if (userData.userId === providedUserId) {
+          console.log(`Found similar fingerprint for userId ${providedUserId}: ${fp} (vs ${stableFingerprint})`);
+          existingUserData = userData;
+          
+          // Associate this fingerprint with the existing user
+          // This way we "learn" the new fingerprint variation
+          this.browserToUser.set(stableFingerprint, existingUserData);
+          break;
+        }
+      }
+    }
     
     // If this browser fingerprint is known and has a user ID
     if (existingUserData) {
-      console.log(`Recognized returning browser: ${browserFingerprint} as user: ${existingUserData.userId}, ${existingUserData.userName}`);
+      console.log(`Recognized returning browser: ${stableFingerprint} as user: ${existingUserData.userId}, ${existingUserData.userName}`);
       
       // If user provided a new name, update it
       if (providedUserName && providedUserName !== existingUserData.userName) {
@@ -158,9 +177,10 @@ class UserManager {
         console.log(`Updated user name for ${existingUserData.userId} to ${providedUserName}`);
       }
       
-      // Update the location if it's changed or not set yet
-      if (location && (!existingUserData.location || existingUserData.location === 'Unknown' || 
-          existingUserData.location === 'Earth' || existingUserData.location === 'Local Network')) {
+      // Update location if needed
+      if (location && (!existingUserData.location || 
+          existingUserData.location === 'Unknown' || 
+          existingUserData.location === 'Earth')) {
         existingUserData.location = location;
         
         // Also update in users map
@@ -202,18 +222,52 @@ class UserManager {
     } 
     // If this is a new browser
     else {
-      // Check if the provided userId is already assigned to another browser fingerprint
-      // This is the crucial fix to prevent identity collisions
+      // Handle provided userId validation with improved logic
       let isProvidedUserIdValid = false;
+      let conflictDetected = false;
+      
       if (providedUserId) {
         isProvidedUserIdValid = true;
         
-        // Check if this userId already belongs to another browser fingerprint
+        // Track if we found any conflicts
+        let conflictingFingerprints = [];
+        
+        // Check for any userId conflicts
         for (const [fp, userData] of this.browserToUser.entries()) {
-          if (userData.userId === providedUserId && fp !== browserFingerprint) {
-            console.warn(`Rejected provided userId ${providedUserId} - already belongs to another browser fingerprint ${fp}`);
+          if (userData.userId === providedUserId) {
+            conflictingFingerprints.push(fp);
+            // We found a conflict but we won't immediately invalidate
+          }
+        }
+        
+        // If conflicts exist, check if they're recent users
+        if (conflictingFingerprints.length > 0) {
+          conflictDetected = true;
+          console.warn(`Provided userId ${providedUserId} has ${conflictingFingerprints.length} conflicting fingerprints`);
+          
+          // Check if any of the conflicting fingerprints have recent activity
+          const now = Date.now();
+          const MAX_INACTIVE_TIME = 7 * 24 * 60 * 60 * 1000; // 7 days
+          
+          let allInactive = true;
+          
+          for (const fp of conflictingFingerprints) {
+            const userData = this.browserToUser.get(fp);
+            const lastActivity = userData.lastActivity || userData.firstSeen || 0;
+            
+            if (now - lastActivity < MAX_INACTIVE_TIME) {
+              allInactive = false;
+              break;
+            }
+          }
+          
+          // If all conflicting fingerprints are inactive (old), we can reuse the userId
+          if (allInactive) {
+            console.log(`All conflicting fingerprints for ${providedUserId} are inactive, allowing reuse`);
+            conflictDetected = false;
+          } else {
+            // Active conflict - invalidate provided userId
             isProvidedUserIdValid = false;
-            break;
           }
         }
       }
@@ -222,14 +276,14 @@ class UserManager {
       const userId = (isProvidedUserIdValid && providedUserId) || 
                     `user-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       
-      // For new users, always use Guest + number naming unless they provided a custom name
+      // For name, use provided name or generate a guest name
       const userName = providedUserName || this.generateGuestName();
       
       // Current timestamp for first joined
       const firstJoined = new Date().toISOString();
       
       // Store this data for the browser fingerprint
-      this.browserToUser.set(browserFingerprint, {
+      this.browserToUser.set(stableFingerprint, {
         userId: userId,
         userName: userName,
         firstSeen: Date.now(),
@@ -259,7 +313,7 @@ class UserManager {
         stats.status = 'online';
       }
       
-      console.log(`Registered new browser: ${browserFingerprint} as user: ${userId}, ${userName}, location: ${location}, status: online`);
+      console.log(`Registered new browser: ${stableFingerprint} as user: ${userId}, ${userName}, location: ${location}, status: online`);
       
       return {
         userId,
@@ -267,7 +321,8 @@ class UserManager {
         isReturning: false,
         firstJoined,
         location,
-        status: 'online'
+        status: 'online',
+        conflictDetected: conflictDetected // Send this back to client
       };
     }
   }
@@ -592,6 +647,22 @@ class UserManager {
     
     console.log(`Updated stats for user ${userId}: ${JSON.stringify(stats)}`);
     return stats;
+  }
+
+  /**
+   * Get stable fingerprint by removing timestamps or random elements
+   */
+  getStableFingerprint(fingerprint) {
+    if (!fingerprint) return fingerprint;
+    
+    // If the fingerprint contains a timestamp (often added by clients), remove it
+    // Example: "browser-abc123-1615484848"
+    const timestampPattern = /-\d{9,}$/;
+    if (timestampPattern.test(fingerprint)) {
+      return fingerprint.replace(timestampPattern, '');
+    }
+    
+    return fingerprint;
   }
   
 }
