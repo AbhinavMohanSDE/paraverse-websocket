@@ -397,7 +397,7 @@ class UserManager {
   }
   
   /**
-   * Broadcast the current user list to all clients with stats
+   * Broadcast the current user list to all clients with additional user filtering
    */
   broadcastUserList(wss) {
     try {
@@ -405,27 +405,47 @@ class UserManager {
       const activeUsers = [];
       const seenUserIds = new Set();
       
+      // Track how many users we've processed
+      const MAX_USERS_TO_BROADCAST = 100; // Reasonable limit
+      
       // Collect unique users by browser fingerprint
       this.browserToUser.forEach((userData, fingerprint) => {
-        if (!seenUserIds.has(userData.userId)) {
+        if (!seenUserIds.has(userData.userId) && activeUsers.length < MAX_USERS_TO_BROADCAST) {
           seenUserIds.add(userData.userId);
           
           // Get user stats
           const stats = this.getUserStats(userData.userId);
           
+          // Add user with stable data - trim any excessive fields
           activeUsers.push({
             id: userData.userId,
-            name: userData.userName,
-            stats, // Include stats in user data
+            name: userData.userName || `Guest-${userData.userId.substring(0, 4)}`,
+            stats: {
+              meteorsSent: stats?.meteorsSent || 0,
+              objectsShot: stats?.objectsShot || 0,
+              firstJoined: stats?.firstJoined || userData.firstJoined,
+              location: stats?.location || userData.location || 'Unknown'
+            },
             firstJoined: userData.firstJoined,
-            location: userData.location,
-            status: userData.status || 'offline' // Include status with default
+            location: userData.location || 'Unknown',
+            status: userData.status || 'offline'
           });
         }
       });
       
-      // Create the message once
-      const message = JSON.stringify(activeUsers);
+      // If we reached the limit, add a note about truncation
+      let message;
+      if (seenUserIds.size > MAX_USERS_TO_BROADCAST) {
+        console.log(`User list truncated: ${seenUserIds.size} users, broadcasting only ${MAX_USERS_TO_BROADCAST}`);
+        message = JSON.stringify({
+          type: 'userListTruncated',
+          users: activeUsers,
+          total: seenUserIds.size,
+          shown: MAX_USERS_TO_BROADCAST
+        });
+      } else {
+        message = JSON.stringify(activeUsers);
+      }
       
       // Send to all connected clients
       wss.clients.forEach((client) => {
@@ -438,7 +458,7 @@ class UserManager {
         }
       });
       
-      console.log(`Broadcasted user list with ${activeUsers.length} unique browser fingerprints to all clients`);
+      console.log(`Broadcasted user list with ${activeUsers.length} unique users to all clients`);
     } catch (error) {
       console.error('Error broadcasting user list:', error);
     }
