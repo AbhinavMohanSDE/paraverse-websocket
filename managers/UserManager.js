@@ -132,6 +132,7 @@ class UserManager {
   
   /**
    * Process user identity and determine if they're new or returning
+   * Fixed to prevent user ID collisions across different browser fingerprints
    */
   async processUserIdentity(browserFingerprint, providedUserId, providedUserName, clientIp, clientOrigin) {
     // Get approximate location from IP
@@ -196,13 +197,30 @@ class UserManager {
         isReturning: true,
         firstJoined: existingUserData.firstJoined,
         location: existingUserData.location || location,
-        status: 'online' // Add status to return
+        status: 'online'
       };
     } 
-    // If this is a new browser or has a provided userId that needs to be stored
+    // If this is a new browser
     else {
-      // Generate or use the provided user data
-      const userId = providedUserId || `user-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      // Check if the provided userId is already assigned to another browser fingerprint
+      // This is the crucial fix to prevent identity collisions
+      let isProvidedUserIdValid = false;
+      if (providedUserId) {
+        isProvidedUserIdValid = true;
+        
+        // Check if this userId already belongs to another browser fingerprint
+        for (const [fp, userData] of this.browserToUser.entries()) {
+          if (userData.userId === providedUserId && fp !== browserFingerprint) {
+            console.warn(`Rejected provided userId ${providedUserId} - already belongs to another browser fingerprint ${fp}`);
+            isProvidedUserIdValid = false;
+            break;
+          }
+        }
+      }
+      
+      // Generate a new userId if provided one is invalid or not provided
+      const userId = (isProvidedUserIdValid && providedUserId) || 
+                    `user-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       
       // For new users, always use Guest + number naming unless they provided a custom name
       const userName = providedUserName || this.generateGuestName();
@@ -218,7 +236,7 @@ class UserManager {
         lastActivity: Date.now(),
         firstJoined: firstJoined,
         location: location,
-        status: 'online', // Set initial status
+        status: 'online',
         lastStatusChange: Date.now()
       });
       
@@ -231,7 +249,7 @@ class UserManager {
         connected: Date.now(),
         firstJoined: firstJoined,
         location: location,
-        status: 'online', // Set initial status
+        status: 'online',
         lastStatusChange: Date.now()
       });
       
@@ -249,7 +267,7 @@ class UserManager {
         isReturning: false,
         firstJoined,
         location,
-        status: 'online' // Add status to return
+        status: 'online'
       };
     }
   }

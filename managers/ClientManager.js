@@ -136,6 +136,65 @@ class ClientManager {
     
     return hasActiveConnections;
   }
+
+  /**
+   * New method to track associations between browser fingerprints and user IDs
+   * This helps detect and prevent identity confusion issues
+   */
+  recordUserAssociation(browserFingerprint, userId) {
+    // Check if we already have a userAssociations map
+    if (!this.userAssociations) {
+      this.userAssociations = new Map();
+    }
+    
+    // Record this association
+    this.userAssociations.set(browserFingerprint, userId);
+    
+    // Also maintain the reverse lookup
+    if (!this.userToFingerprints) {
+      this.userToFingerprints = new Map();
+    }
+    
+    // A user can have multiple fingerprints (multiple devices/browsers)
+    if (!this.userToFingerprints.has(userId)) {
+      this.userToFingerprints.set(userId, new Set());
+    }
+    
+    this.userToFingerprints.get(userId).add(browserFingerprint);
+    
+    // Log for debugging
+    console.log(`Recorded association: Browser ${browserFingerprint.substring(0, 8)}... -> User ${userId}`);
+    
+    // Check for potential issues (multiple fingerprints for a single user) 
+    // This is normal but log for visibility
+    const fingerprints = this.userToFingerprints.get(userId);
+    if (fingerprints && fingerprints.size > 1) {
+      console.log(`User ${userId} has ${fingerprints.size} associated fingerprints (multiple devices/browsers)`);
+    }
+  }
+
+  /**
+   * Check if a userId is already associated with a different fingerprint
+   * This helps prevent identity conflicts
+   */
+  isUserAssociatedWithDifferentFingerprint(userId, currentFingerprint) {
+    if (!this.userToFingerprints || !this.userToFingerprints.has(userId)) {
+      return false;
+    }
+    
+    const fingerprints = this.userToFingerprints.get(userId);
+    
+    // Check if any of the fingerprints associated with this userId are different 
+    // from the current one
+    for (const fp of fingerprints) {
+      if (fp !== currentFingerprint) {
+        console.warn(`User ${userId} is already associated with another fingerprint ${fp.substring(0, 8)}...`);
+        return true;
+      }
+    }
+    
+    return false;
+  }
 }
 
 module.exports = ClientManager;

@@ -703,53 +703,95 @@ class WebSocketServer {
     }
   }
   
-// This is the updated handleIdentity method for server.js
-async handleIdentity(ws, parsedMessage, clientId) {
-  try {
-    const browserFingerprint = parsedMessage.browserFingerprint;
-    const providedUserId = parsedMessage.userId;
-    const providedUserName = parsedMessage.userName;
-    
-    console.log(`Received identity with browser fingerprint: ${browserFingerprint}`);
-    
-    // Update client with the browser fingerprint
-    this.clientManager.updateClientBrowserFingerprint(ws, browserFingerprint);
-    
-    // Process user identity and send welcome message - now async
-    const userData = await this.userManager.processUserIdentity(
-      browserFingerprint, 
-      providedUserId, 
-      providedUserName, 
-      this.clientManager.getClientIp(ws),
-      this.clientManager.getClientOrigin(ws)
-    );
-    
-    // Update client with user ID
-    this.clientManager.updateClientUserId(ws, userData.userId);
-    
-    // Send welcome message
+  // This is the enhanced handleIdentity method for server.js
+  async handleIdentity(ws, parsedMessage, clientId) {
+    try {
+      const browserFingerprint = parsedMessage.browserFingerprint;
+      const providedUserId = parsedMessage.userId;
+      const providedUserName = parsedMessage.userName;
+      const clientIp = this.clientManager.getClientIp(ws);
+      
+      if (!browserFingerprint) {
+        console.error('Missing browser fingerprint in identity message');
+        this.sendErrorMessage(ws, 'Missing browser fingerprint');
+        return;
+      }
+      
+      console.log(`Received identity with browser fingerprint: ${browserFingerprint}`);
+      
+      // Update client with the browser fingerprint
+      this.clientManager.updateClientBrowserFingerprint(ws, browserFingerprint);
+      
+      // Check for IP address information to enhance fingerprinting
+      const ipSuffix = clientIp ? clientIp.split('.').slice(-1).join('.') : '';
+      
+      // Send IP suffix back to client for enhanced fingerprinting
+      if (ipSuffix) {
+        try {
+          ws.send(JSON.stringify({
+            type: 'fingerprintEnhancement',
+            ipSuffix: ipSuffix
+          }));
+        } catch (error) {
+          console.error('Error sending fingerprint enhancement:', error);
+        }
+      }
+      
+      // Process user identity and send welcome message - now async
+      const userData = await this.userManager.processUserIdentity(
+        browserFingerprint, 
+        providedUserId, 
+        providedUserName, 
+        clientIp,
+        this.clientManager.getClientOrigin(ws)
+      );
+      
+      // Update client with user ID
+      this.clientManager.updateClientUserId(ws, userData.userId);
+      
+      // Record this association in memory
+      this.clientManager.recordUserAssociation(browserFingerprint, userData.userId);
+      
+      // Send welcome message
+      try {
+        ws.send(JSON.stringify({
+          type: 'welcome',
+          message: userData.isReturning ? 'Welcome back to Paraverse' : 'Connected to Paraverse WebSocket Server',
+          id: clientId,
+          userId: userData.userId,
+          userName: userData.userName,
+          firstJoined: userData.firstJoined,
+          location: userData.location,
+          status: userData.status || 'online',
+          timestamp: Date.now()
+        }));
+        
+        // Also log this connection for debugging purposes
+        console.log(`User authenticated: ${userData.userId} (${userData.userName}) from fingerprint ${browserFingerprint.substring(0, 8)}...`);
+      } catch (error) {
+        console.error('Error sending welcome message:', error);
+      }
+      
+      // Broadcast updated user list
+      this.userManager.broadcastUserList(this.wss);
+    } catch (error) {
+      console.error('Error handling identity message:', error);
+      this.sendErrorMessage(ws, 'Error processing identity');
+    }
+  }
+
+  // Helper method to send error messages
+  sendErrorMessage(ws, message) {
     try {
       ws.send(JSON.stringify({
-        type: 'welcome',
-        message: userData.isReturning ? 'Welcome back to Paraverse' : 'Connected to Paraverse WebSocket Server',
-        id: clientId,
-        userId: userData.userId,
-        userName: userData.userName,
-        firstJoined: userData.firstJoined,
-        location: userData.location,
-        status: userData.status || 'online',  // Include status in welcome message
+        type: 'error',
+        message: message,
         timestamp: Date.now()
       }));
     } catch (error) {
-      console.error('Error sending welcome message:', error);
+      console.error('Error sending error message:', error);
     }
-    
-    // Broadcast updated user list
-    this.userManager.broadcastUserList(this.wss);
-  } catch (error) {
-    console.error('Error handling identity message:', error);
   }
-}
   
   handleClose(ws, code, reason, clientId) {
     console.log(`Client ${clientId} disconnected. Code: ${code}, Reason: ${reason || 'No reason provided'}`);
