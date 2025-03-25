@@ -1,5 +1,3 @@
-import WebSocket from 'ws';
-
 class VoiceManager {
   constructor() {
     // Track users currently in voice chat
