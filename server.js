@@ -511,6 +511,50 @@ class WebSocketServer {
       }
       }
 
+      if (parsedMessage.type === 'meleeAttack' && 
+        parsedMessage.sourceId && 
+        parsedMessage.position && 
+        parsedMessage.direction) {
+        try {
+          const { sourceId, position, direction, attackType, timestamp } = parsedMessage;
+          
+          // Validate the melee attack data
+          if (typeof position.x !== 'number' || 
+              typeof position.y !== 'number' || 
+              typeof position.z !== 'number' || 
+              typeof direction.x !== 'number' || 
+              typeof direction.y !== 'number' || 
+              typeof direction.z !== 'number') {
+            console.warn('Invalid melee attack data:', parsedMessage);
+            return;
+          }
+          
+          console.log(`Melee attack from user ${sourceId}: pos(${position.x.toFixed(2)}, ${position.y.toFixed(2)}, ${position.z.toFixed(2)})`);
+          
+          // Broadcast the melee attack to all other clients
+          this.wss.clients.forEach((client) => {
+            if (client !== ws && client.readyState === WebSocket.OPEN) {
+              try {
+                client.send(JSON.stringify({
+                  type: 'meleeAttack',
+                  sourceId,
+                  position,
+                  direction,
+                  attackType: attackType || 'melee',
+                  timestamp: timestamp || Date.now()
+                }));
+              } catch (error) {
+                console.error('Error broadcasting melee attack:', error);
+              }
+            }
+          });
+          
+          return;
+        } catch (error) {
+          console.error('Error handling melee attack message:', error);
+        }
+      }
+
       // Handle health update messages
       if (parsedMessage.type === 'healthUpdate' && 
         parsedMessage.userId && 
