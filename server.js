@@ -587,6 +587,36 @@ class WebSocketServer {
         console.error('Error handling health update message:', error);
       }
       }
+
+      // Handle player flight state messages
+      if (parsedMessage.type === 'playerFlightState' && 
+        parsedMessage.userId && 
+        typeof parsedMessage.isFlying === 'boolean') {
+      try {
+        const { userId, isFlying } = parsedMessage;
+        
+        console.log(`Flight state update from user ${userId}: ${isFlying ? 'flying' : 'not flying'}`);
+        
+        // Broadcast the flight state to all other clients
+        this.wss.clients.forEach((client) => {
+          if (client !== ws && client.readyState === WebSocket.OPEN) {
+            try {
+              client.send(JSON.stringify({
+                type: 'playerFlightState',
+                userId,
+                isFlying
+              }));
+            } catch (error) {
+              console.error('Error broadcasting flight state update:', error);
+            }
+          }
+        });
+        
+        return;
+      } catch (error) {
+        console.error('Error handling flight state update:', error);
+      }
+      }
       
       // Handle voice join requests
       if (parsedMessage.type === 'voiceJoin' && parsedMessage.userId) {

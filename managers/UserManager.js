@@ -641,7 +641,9 @@ class UserManager {
         kills: 0,
         deaths: 0,
         projectilesFired: 0,
-        projectileHits: 0
+        projectileHits: 0,
+        //Other
+        isFlying: false
       });
     }
     return this.userStats.get(userId);
@@ -666,6 +668,16 @@ class UserManager {
     }
     
     console.log(`Updated stats for user ${userId}: ${JSON.stringify(stats)}`);
+    return stats;
+  }
+
+  // Update flight state
+  updateUserFlightState(userId, isFlying) {
+    const stats = this.getUserStats(userId);
+    if (stats) {
+      stats.isFlying = isFlying;
+      console.log(`Updated flight state for user ${userId}: ${isFlying ? 'flying' : 'not flying'}`);
+    }
     return stats;
   }
 
