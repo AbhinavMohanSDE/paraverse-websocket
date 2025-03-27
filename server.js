@@ -617,6 +617,36 @@ class WebSocketServer {
         console.error('Error handling flight state update:', error);
       }
       }
+
+      if (parsedMessage.type === 'playerAnimation' && 
+          parsedMessage.userId && 
+          parsedMessage.animationState) {
+        try {
+          const { userId, animationState, timestamp } = parsedMessage;
+          
+          console.log(`Animation update from user ${userId}: ${animationState}`);
+          
+          // Broadcast the animation state to all other clients
+          this.wss.clients.forEach((client) => {
+            if (client !== ws && client.readyState === WebSocket.OPEN) {
+              try {
+                client.send(JSON.stringify({
+                  type: 'playerAnimation',
+                  userId,
+                  animationState,
+                  timestamp: timestamp || Date.now()
+                }));
+              } catch (error) {
+                console.error('Error broadcasting animation state:', error);
+              }
+            }
+          });
+          
+          return;
+        } catch (error) {
+          console.error('Error handling animation update:', error);
+        }
+      }
       
       // Handle voice join requests
       if (parsedMessage.type === 'voiceJoin' && parsedMessage.userId) {
