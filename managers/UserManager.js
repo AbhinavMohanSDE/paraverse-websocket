@@ -424,7 +424,14 @@ class UserManager {
               meteorsSent: stats?.meteorsSent || 0,
               objectsShot: stats?.objectsShot || 0,
               firstJoined: stats?.firstJoined || userData.firstJoined,
-              location: stats?.location || userData.location || 'Unknown'
+              location: stats?.location || userData.location || 'Unknown',
+              level: stats?.level || 0,
+              health: stats?.health || 100,
+              attack: stats?.attack || 10,
+              ability: stats?.ability || 10,
+              weapon: stats?.weapon || 'none',
+              emblem: stats?.emblem || 'none',
+              timePlayed: stats?.timePlayed || '0d 0h'
             },
             firstJoined: userData.firstJoined,
             location: userData.location || 'Unknown',
@@ -643,7 +650,15 @@ class UserManager {
         projectilesFired: 0,
         projectileHits: 0,
         //Other
-        isFlying: false
+        isFlying: false,
+        //Player Stats
+        level: 0,
+        health: 100,
+        attack: 10,
+        ability: 10,
+        weapon: 'none',
+        emblem: 'none',
+        timePlayed: '0d 0h' // Format: days and hours
       });
     }
     return this.userStats.get(userId);
