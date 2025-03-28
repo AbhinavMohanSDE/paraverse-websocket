@@ -656,8 +656,8 @@ class UserManager {
         health: 100,
         attack: 10,
         ability: 10,
-        weapon: 'none',
-        emblem: 'none',
+        weapon: 'None',
+        emblem: 'None',
         timePlayed: '0d 0h' // Format: days and hours
       });
     }
