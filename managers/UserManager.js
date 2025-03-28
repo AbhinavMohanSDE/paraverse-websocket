@@ -652,7 +652,7 @@ class UserManager {
         //Other
         isFlying: false,
         //Player Stats
-        level: 0,
+        level: 1,
         health: 100,
         attack: 10,
         ability: 10,
