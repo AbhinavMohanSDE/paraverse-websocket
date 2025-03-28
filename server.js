@@ -6,6 +6,7 @@ const ChatManager = require('./managers/ChatManager');
 const ServerState = require('./utils/ServerState');
 const { setupErrorHandlers } = require('./utils/ErrorHandlers');
 const VoiceManager = require('./managers/VoiceManager');
+const GameChatManager = require('./managers/GameChatManager');
 
 // Create main server class
 class WebSocketServer {
@@ -18,6 +19,7 @@ class WebSocketServer {
     this.clientManager = new ClientManager(this.userManager, this.serverState);
     this.chatManager = new ChatManager();
     this.voiceManager = new VoiceManager();
+    this.gameChatManager = new GameChatManager();
     
     // Create HTTP server
     this.server = this.createHttpServer();
@@ -329,6 +331,34 @@ class WebSocketServer {
           console.error('Error handling updateUserLocation request:', error);
         }
         return;
+      }
+
+      // Handle game chat message
+      if (parsedMessage.type === 'gameChat' && parsedMessage.userId && parsedMessage.text) {
+        try {
+          // Get user name from the user manager
+          const user = this.userManager.getUserById(parsedMessage.userId);
+          const userName = user ? user.name : 'Unknown Player';
+          
+          // Create game chat message object
+          const gameChatMessage = {
+            userId: parsedMessage.userId,
+            userName: userName,
+            text: parsedMessage.text
+          };
+          
+          // Broadcast to all clients except sender
+          this.gameChatManager.broadcastGameMessage(this.wss, gameChatMessage, ws);
+
+          // Send the message directly to the sender
+          // This ensures they still see their own message
+          this.gameChatManager.sendDirectGameMessage(ws, gameChatMessage);
+          
+          console.log(`Game chat message from ${userName} (${parsedMessage.userId}): ${parsedMessage.text.substring(0, 50)}${parsedMessage.text.length > 50 ? '...' : ''}`);
+          return;
+        } catch (error) {
+          console.error('Error handling game chat message:', error);
+        }
       }
 
       // Handle world position and rotation updates
