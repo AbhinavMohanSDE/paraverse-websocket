@@ -711,6 +711,36 @@ class UserManager {
     
     return fingerprint;
   }
+
+  /**
+   * Update a player's game stat
+   * @param {string} userId - The user ID
+   * @param {string} stat - The stat name to update
+   * @param {any} value - The new value for the stat
+   * @returns {object} The updated stats object
+   */
+  updatePlayerGameStat(userId, stat, value) {
+    // Get the user's stats
+    const stats = this.getUserStats(userId);
+    if (!stats) {
+      console.warn(`Cannot update stat for unknown user: ${userId}`);
+      return null;
+    }
+    
+    // Validate allowed stats
+    const allowedStats = ['level', 'health', 'attack', 'ability', 'weapon', 'emblem', 'timePlayed'];
+    if (!allowedStats.includes(stat)) {
+      console.warn(`Attempted to update disallowed stat: ${stat} for user ${userId}`);
+      return stats;
+    }
+    
+    // Update the stat
+    stats[stat] = value;
+    console.log(`Updated game stat for ${userId}: ${stat}=${value}`);
+    
+    // Return the updated stats
+    return stats;
+  }
   
 }
 

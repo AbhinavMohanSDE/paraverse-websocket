@@ -333,6 +333,46 @@ class WebSocketServer {
         return;
       }
 
+      if (parsedMessage.type === 'updatePlayerStat' && 
+          parsedMessage.userId && 
+          parsedMessage.stat && 
+          parsedMessage.value !== undefined) {
+        try {
+          const { userId, stat, value } = parsedMessage;
+          
+          // Validate the stat name and value
+          if (!this.validatePlayerStat(stat, value)) {
+            console.warn(`Invalid player stat update: ${stat}=${value}`);
+            return;
+          }
+          
+          console.log(`Player stat update from ${userId}: ${stat}=${value}`);
+          
+          // Update the user's stats in the UserManager
+          this.userManager.updatePlayerGameStat(userId, stat, value);
+          
+          // Broadcast the stat update to all clients
+          this.wss.clients.forEach((client) => {
+            if (client.readyState === WebSocket.OPEN) {
+              try {
+                client.send(JSON.stringify({
+                  type: 'updatePlayerStat',
+                  userId,
+                  stat,
+                  value
+                }));
+              } catch (error) {
+                console.error('Error broadcasting player stat update:', error);
+              }
+            }
+          });
+          
+          return;
+        } catch (error) {
+          console.error('Error handling player stat update:', error);
+        }
+      }
+
       // Handle game chat message
       if (parsedMessage.type === 'gameChat' && parsedMessage.userId && parsedMessage.text) {
         try {
