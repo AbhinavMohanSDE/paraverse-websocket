@@ -689,12 +689,12 @@ class WebSocketServer {
       }
 
       if (parsedMessage.type === 'playerAnimation' && 
-          parsedMessage.userId && 
-          parsedMessage.animationState) {
+        parsedMessage.userId && 
+        parsedMessage.animationState) {
         try {
-          const { userId, animationState, timestamp } = parsedMessage;
+          const { userId, animationState, timestamp, startTime } = parsedMessage;
           
-          console.log(`Animation update from user ${userId}: ${animationState}`);
+          console.log(`Animation update from user ${userId}: ${animationState}${startTime !== undefined ? ` with startTime: ${startTime}` : ''}`);
           
           // Broadcast the animation state to all other clients
           this.wss.clients.forEach((client) => {
@@ -704,7 +704,8 @@ class WebSocketServer {
                   type: 'playerAnimation',
                   userId,
                   animationState,
-                  timestamp: timestamp || Date.now()
+                  timestamp: timestamp || Date.now(),
+                  startTime // Include the startTime parameter in the broadcast
                 }));
               } catch (error) {
                 console.error('Error broadcasting animation state:', error);
