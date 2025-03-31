@@ -625,6 +625,88 @@ class WebSocketServer {
         }
       }
 
+      // Handle skill used messages
+      if (parsedMessage.type === 'skillUsed' && 
+        parsedMessage.sourceId && 
+        parsedMessage.position && 
+        parsedMessage.direction &&
+        parsedMessage.skillType) {
+      try {
+        const { sourceId, position, direction, skillType, timestamp, ...additionalData } = parsedMessage;
+        
+        // Validate the skill data
+        if (typeof position.x !== 'number' || 
+            typeof position.y !== 'number' || 
+            typeof position.z !== 'number' || 
+            typeof direction.x !== 'number' || 
+            typeof direction.y !== 'number' || 
+            typeof direction.z !== 'number') {
+          console.warn('Invalid skill data:', parsedMessage);
+          return;
+        }
+        
+        console.log(`Skill used: ${skillType} from user ${sourceId}: pos(${position.x.toFixed(2)}, ${position.y.toFixed(2)}, ${position.z.toFixed(2)})`);
+        
+        // Broadcast the skill to all other clients
+        this.wss.clients.forEach((client) => {
+          if (client !== ws && client.readyState === WebSocket.OPEN) {
+            try {
+              client.send(JSON.stringify({
+                type: 'skillUsed',
+                skillType,
+                sourceId,
+                position,
+                direction,
+                timestamp: timestamp || Date.now(),
+                ...additionalData
+              }));
+            } catch (error) {
+              console.error('Error broadcasting skill used:', error);
+            }
+          }
+        });
+        
+        return;
+      } catch (error) {
+        console.error('Error handling skill used message:', error);
+      }
+      }
+
+      // Handle skill hit messages
+      if (parsedMessage.type === 'skillHit' && 
+        parsedMessage.sourceId && 
+        parsedMessage.targetId && 
+        parsedMessage.skillId) {
+      try {
+        const { sourceId, targetId, skillId, skillType, position, damage } = parsedMessage;
+        
+        console.log(`Skill hit: ${skillId} from ${sourceId} hit ${targetId} for ${damage} damage`);
+        
+        // Broadcast the hit to all clients except sender
+        this.wss.clients.forEach((client) => {
+          if (client !== ws && client.readyState === WebSocket.OPEN) {
+            try {
+              client.send(JSON.stringify({
+                type: 'skillHit',
+                skillId,
+                skillType: skillType || 'skill',
+                sourceId,
+                targetId,
+                position: position || { x: 0, y: 0, z: 0 },
+                damage: typeof damage === 'number' ? damage : 20
+              }));
+            } catch (error) {
+              console.error('Error broadcasting skill hit:', error);
+            }
+          }
+        });
+        
+        return;
+      } catch (error) {
+        console.error('Error handling skill hit message:', error);
+      }
+      }
+
       // Handle health update messages
       if (parsedMessage.type === 'healthUpdate' && 
         parsedMessage.userId && 
