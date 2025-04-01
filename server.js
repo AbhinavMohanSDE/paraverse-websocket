@@ -1150,24 +1150,24 @@ class WebSocketServer {
     // Define allowed stats and their validation rules
     const validationRules = {
       // Level should be a number between 1 and 100
-      'level': (val) => typeof val === 'number' && val >= 1 && val <= 100,
+      'level': (val) => typeof val === 'number',
       
       // Health should be a number between 0 and 100
-      'health': (val) => typeof val === 'number' && val >= 0 && val <= 100,
+      'health': (val) => typeof val === 'number',
       
       // Attack and ability should be numbers between 1 and 100
-      'attack': (val) => typeof val === 'number' && val >= 1 && val <= 100,
-      'ability': (val) => typeof val === 'number' && val >= 1 && val <= 100,
+      'attack': (val) => typeof val === 'number',
+      'ability': (val) => typeof val === 'number',
       
       // Weapon, emblem should be strings 
-      'weapon': (val) => typeof val === 'string' && val.length <= 50,
-      'emblem': (val) => typeof val === 'string' && val.length <= 50,
+      'weapon': (val) => typeof val === 'string',
+      'emblem': (val) => typeof val === 'string',
       
       // Time played should be a string in the format "0d 0h"
       'timePlayed': (val) => typeof val === 'string' && /^\d+d \d+h$/.test(val),
       
       // Animation state can be any string but with reasonable length
-      'animationState': (val) => typeof val === 'string' && val.length <= 50
+      'animationState': (val) => typeof val === 'string'
     };
     
     // Check if the stat is allowed
