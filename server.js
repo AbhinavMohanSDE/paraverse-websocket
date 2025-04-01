@@ -8,6 +8,13 @@ const { setupErrorHandlers } = require('./utils/ErrorHandlers');
 const VoiceManager = require('./managers/VoiceManager');
 const GameChatManager = require('./managers/GameChatManager');
 
+const messageRateLimits = {
+  'updatePlayerStat': { limit: 5, window: 1000 }, // 5 per second
+  'playerWeaponVisibility': { limit: 2, window: 1000 }, // 2 per second
+};
+
+const clientMessageCounts = new Map();
+
 // Create main server class
 class WebSocketServer {
   constructor(port = process.env.PORT || 8080) {
@@ -151,7 +158,43 @@ class WebSocketServer {
       console.error(`WebSocket error for client ${clientId}:`, error);
     });
   }
-  
+
+  // Check rate limit for a specific message type
+  checkRateLimit(ws, messageType) {
+    if (!messageRateLimits[messageType]) return true; // No limit for this type
+    
+    const { limit, window } = messageRateLimits[messageType];
+    const now = Date.now();
+    
+    // Get or create client record
+    if (!clientMessageCounts.has(ws)) {
+      clientMessageCounts.set(ws, {});
+    }
+    
+    const clientRecord = clientMessageCounts.get(ws);
+    
+    // Get or create message type record
+    if (!clientRecord[messageType]) {
+      clientRecord[messageType] = { count: 0, resetTime: now + window };
+    }
+    
+    const record = clientRecord[messageType];
+    
+    // Reset if window expired
+    if (now > record.resetTime) {
+      record.count = 0;
+      record.resetTime = now + window;
+    }
+    
+    // Check if limit exceeded
+    if (record.count >= limit) {
+      return false;
+    }
+    
+    // Increment count
+    record.count++;
+    return true;
+  }  
   
   handleMessage(ws, message, clientId) {
     try {
@@ -339,7 +382,12 @@ class WebSocketServer {
           parsedMessage.value !== undefined) {
         try {
           const { userId, stat, value } = parsedMessage;
-          
+          // Check rate limit first
+          if (!this.checkRateLimit(ws, 'updatePlayerStat')) {
+            console.warn(`Rate limit exceeded for updatePlayerStat from ${clientId}`);
+            return;
+          }
+
           // Validate the stat name and value
           if (!this.validatePlayerStat(stat, value)) {
             console.warn(`Invalid player stat update: ${stat}=${value}`);
@@ -353,7 +401,7 @@ class WebSocketServer {
           
           // Broadcast the stat update to all clients
           this.wss.clients.forEach((client) => {
-            if (client.readyState === WebSocket.OPEN) {
+            if (client !== ws && client.readyState === WebSocket.OPEN) {
               try {
                 client.send(JSON.stringify({
                   type: 'updatePlayerStat',
