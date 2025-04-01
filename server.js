@@ -680,22 +680,40 @@ class WebSocketServer {
         parsedMessage.direction &&
         parsedMessage.skillType) {
       try {
-        const { sourceId, position, direction, skillType, timestamp, ...additionalData } = parsedMessage;
+        // Extract data
+        const { sourceId, skillType, timestamp, ...additionalData } = parsedMessage;
         
-        // Validate the skill data
-        if (typeof position.x !== 'number' || 
-            typeof position.y !== 'number' || 
-            typeof position.z !== 'number' || 
-            typeof direction.x !== 'number' || 
-            typeof direction.y !== 'number' || 
-            typeof direction.z !== 'number') {
-          console.warn('Invalid skill data:', parsedMessage);
+        // Ensure position and direction are properly formatted
+        const position = {
+          x: parseFloat(parsedMessage.position.x || parsedMessage.position._x || 0),
+          y: parseFloat(parsedMessage.position.y || parsedMessage.position._y || 0),
+          z: parseFloat(parsedMessage.position.z || parsedMessage.position._z || 0)
+        };
+        
+        const direction = {
+          x: parseFloat(parsedMessage.direction.x || parsedMessage.direction._x || 0),
+          y: parseFloat(parsedMessage.direction.y || parsedMessage.direction._y || 0),
+          z: parseFloat(parsedMessage.direction.z || parsedMessage.direction._z || 0)
+        };
+        
+        // Validate the coordinates are numbers
+        if (isNaN(position.x) || isNaN(position.y) || isNaN(position.z) ||
+            isNaN(direction.x) || isNaN(direction.y) || isNaN(direction.z)) {
+          console.warn('Invalid skill data coordinates:', parsedMessage);
           return;
         }
         
         console.log(`Skill used: ${skillType} from user ${sourceId}: pos(${position.x.toFixed(2)}, ${position.y.toFixed(2)}, ${position.z.toFixed(2)})`);
         
-        // Broadcast the skill to ALL clients (including sender for consistency)
+        // Clean additionalData by removing internal properties
+        const cleanAdditionalData = {};
+        for (const [key, value] of Object.entries(additionalData)) {
+          if (!key.startsWith('_') && key !== 'position' && key !== 'direction' && key !== 'type' && key !== 'sourceId') {
+            cleanAdditionalData[key] = value;
+          }
+        }
+        
+        // Broadcast the skill to ALL clients
         this.wss.clients.forEach((client) => {
           if (client.readyState === WebSocket.OPEN) {
             try {
@@ -706,7 +724,7 @@ class WebSocketServer {
                 position,
                 direction,
                 timestamp: timestamp || Date.now(),
-                ...additionalData
+                ...cleanAdditionalData
               }));
             } catch (error) {
               console.error('Error broadcasting skill used:', error);
@@ -718,7 +736,7 @@ class WebSocketServer {
       } catch (error) {
         console.error('Error handling skill used message:', error);
       }
-      }
+    }
 
       // Handle skill hit messages
       if (parsedMessage.type === 'skillHit' && 
