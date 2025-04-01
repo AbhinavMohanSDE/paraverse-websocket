@@ -647,9 +647,9 @@ class WebSocketServer {
         
         console.log(`Skill used: ${skillType} from user ${sourceId}: pos(${position.x.toFixed(2)}, ${position.y.toFixed(2)}, ${position.z.toFixed(2)})`);
         
-        // Broadcast the skill to all other clients
+        // Broadcast the skill to ALL clients (including sender for consistency)
         this.wss.clients.forEach((client) => {
-          if (client !== ws && client.readyState === WebSocket.OPEN) {
+          if (client.readyState === WebSocket.OPEN) {
             try {
               client.send(JSON.stringify({
                 type: 'skillUsed',
@@ -682,9 +682,9 @@ class WebSocketServer {
         
         console.log(`Skill hit: ${skillId} from ${sourceId} hit ${targetId} for ${damage} damage`);
         
-        // Broadcast the hit to all clients except sender
+        // Broadcast the hit to ALL clients (not just excluding sender)
         this.wss.clients.forEach((client) => {
-          if (client !== ws && client.readyState === WebSocket.OPEN) {
+          if (client.readyState === WebSocket.OPEN) {
             try {
               client.send(JSON.stringify({
                 type: 'skillHit',
@@ -693,7 +693,8 @@ class WebSocketServer {
                 sourceId,
                 targetId,
                 position: position || { x: 0, y: 0, z: 0 },
-                damage: typeof damage === 'number' ? damage : 20
+                damage: typeof damage === 'number' ? damage : 20,
+                timestamp: Date.now() // Add timestamp to ensure message uniqueness
               }));
             } catch (error) {
               console.error('Error broadcasting skill hit:', error);
