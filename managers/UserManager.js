@@ -713,7 +713,7 @@ class UserManager {
   }
 
   /**
-   * Update a player's game stat
+   * Update a player's game stat with improved validation
    * @param {string} userId - The user ID
    * @param {string} stat - The stat name to update
    * @param {any} value - The new value for the stat
@@ -727,10 +727,41 @@ class UserManager {
       return null;
     }
     
-    // Validate allowed stats
-    const allowedStats = ['level', 'health', 'attack', 'ability', 'weapon', 'emblem', 'timePlayed'];
+    // Comprehensive list of allowed stats
+    const allowedStats = [
+      'level', 'health', 'attack', 'ability', 
+      'weapon', 'emblem', 'timePlayed', 'animationState'
+    ];
+    
+    // Validate stat name
     if (!allowedStats.includes(stat)) {
       console.warn(`Attempted to update disallowed stat: ${stat} for user ${userId}`);
+      return stats;
+    }
+    
+    // Perform basic validation on values
+    let isValid = true;
+    
+    // Type-specific validation
+    if (['level', 'health', 'attack', 'ability'].includes(stat)) {
+      // Numeric stats
+      if (typeof value !== 'number' || value < 0 || value > 100) {
+        isValid = false;
+      }
+    } else if (['weapon', 'emblem', 'animationState'].includes(stat)) {
+      // String stats
+      if (typeof value !== 'string' || value.length > 50) {
+        isValid = false;
+      }
+    } else if (stat === 'timePlayed') {
+      // Time format
+      if (typeof value !== 'string' || !/^\d+d \d+h$/.test(value)) {
+        isValid = false;
+      }
+    }
+    
+    if (!isValid) {
+      console.warn(`Invalid value for stat ${stat}: ${value}`);
       return stats;
     }
     

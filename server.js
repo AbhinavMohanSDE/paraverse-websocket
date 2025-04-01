@@ -1139,6 +1139,52 @@ class WebSocketServer {
       }
     }, 3600000); // Run every hour
   }
+
+  /**
+   * Validate player stat name and value
+   * @param {string} stat - The stat name
+   * @param {any} value - The value to validate
+   * @returns {boolean} - Whether the stat/value pair is valid
+   */
+  validatePlayerStat(stat, value) {
+    // Define allowed stats and their validation rules
+    const validationRules = {
+      // Level should be a number between 1 and 100
+      'level': (val) => typeof val === 'number' && val >= 1 && val <= 100,
+      
+      // Health should be a number between 0 and 100
+      'health': (val) => typeof val === 'number' && val >= 0 && val <= 100,
+      
+      // Attack and ability should be numbers between 1 and 100
+      'attack': (val) => typeof val === 'number' && val >= 1 && val <= 100,
+      'ability': (val) => typeof val === 'number' && val >= 1 && val <= 100,
+      
+      // Weapon, emblem should be strings 
+      'weapon': (val) => typeof val === 'string' && val.length <= 50,
+      'emblem': (val) => typeof val === 'string' && val.length <= 50,
+      
+      // Time played should be a string in the format "0d 0h"
+      'timePlayed': (val) => typeof val === 'string' && /^\d+d \d+h$/.test(val),
+      
+      // Animation state can be any string but with reasonable length
+      'animationState': (val) => typeof val === 'string' && val.length <= 50
+    };
+    
+    // Check if the stat is allowed
+    if (!validationRules.hasOwnProperty(stat)) {
+      console.warn(`Invalid stat name: ${stat}`);
+      return false;
+    }
+    
+    // Check if the value passes validation
+    const isValid = validationRules[stat](value);
+    if (!isValid) {
+      console.warn(`Invalid value for stat ${stat}: ${value}`);
+      return false;
+    }
+    
+    return true;
+  }
   
   start() {
     // Start the server
