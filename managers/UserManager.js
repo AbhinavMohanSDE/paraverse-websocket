@@ -739,32 +739,6 @@ class UserManager {
       return stats;
     }
     
-    // Perform basic validation on values
-    let isValid = true;
-    
-    // Type-specific validation
-    if (['level', 'health', 'attack', 'ability'].includes(stat)) {
-      // Numeric stats
-      if (typeof value !== 'number' || value < 0 || value > 100) {
-        isValid = false;
-      }
-    } else if (['weapon', 'emblem', 'animationState'].includes(stat)) {
-      // String stats
-      if (typeof value !== 'string' || value.length > 50) {
-        isValid = false;
-      }
-    } else if (stat === 'timePlayed') {
-      // Time format
-      if (typeof value !== 'string' || !/^\d+d \d+h$/.test(value)) {
-        isValid = false;
-      }
-    }
-    
-    if (!isValid) {
-      console.warn(`Invalid value for stat ${stat}: ${value}`);
-      return stats;
-    }
-    
     // Update the stat
     stats[stat] = value;
     console.log(`Updated game stat for ${userId}: ${stat}=${value}`);
