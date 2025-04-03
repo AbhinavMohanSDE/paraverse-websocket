@@ -199,7 +199,7 @@ class WebSocketServer {
   handleMessage(ws, message, clientId) {
     try {
       const msgStr = message.toString();
-      console.log(`Received message from ${clientId}:`, msgStr.substring(0, 100) + (msgStr.length > 100 ? '...' : ''));
+      console.log(`Received message from ${clientId}:`, msgStr.substring(0, 1000) + (msgStr.length > 1000 ? '...' : ''));
       
       // Update client activity
       this.clientManager.updateClientActivity(ws);
@@ -506,11 +506,11 @@ class WebSocketServer {
         }
         
         // Validate damage and speed (optional)
-        const validatedDamage = typeof damage === 'number' && damage >= 0 && damage <= 100 
+        const validatedDamage = typeof damage === 'number' && damage >= 0
           ? damage 
           : 20; // Default to 20 if invalid
         
-        const validatedSpeed = typeof speed === 'number' && speed > 0 && speed <= 2 
+        const validatedSpeed = typeof speed === 'number' && speed > 0
           ? speed 
           : 0.5; // Default to 0.5 if invalid
         
@@ -585,7 +585,7 @@ class WebSocketServer {
         const { sourceId, targetId, amount } = parsedMessage;
         
         // Validate damage amount
-        const validatedAmount = amount >= 0 && amount <= 100 ? amount : 20;
+        const validatedAmount = amount >= 0 ? amount : 0;
         
         console.log(`Damage: ${sourceId} dealt ${validatedAmount} damage to ${targetId}`);
         
@@ -782,7 +782,7 @@ class WebSocketServer {
         const { userId, health } = parsedMessage;
         
         // Validate health value
-        const validatedHealth = health >= 0 && health <= 100 ? health : 100;
+        const validatedHealth = health >= 0 ? health : 0;
         
         console.log(`Health update: ${userId} health now ${validatedHealth}`);
         
