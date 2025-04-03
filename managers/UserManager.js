@@ -642,7 +642,7 @@ class UserManager {
         location: location || 'Unknown',
         status: 'online',
         // Combat statistics
-        health: 100,
+        health: 1000,
         damageDealt: 0,
         damageTaken: 0,
         kills: 0,
@@ -653,9 +653,9 @@ class UserManager {
         isFlying: false,
         //Player Stats
         level: 1,
-        health: 100,
-        attack: 10,
-        ability: 10,
+        health: 1000,
+        attack: 0,
+        ability: 0,
         weapon: 'None',
         emblem: 'None',
         timePlayed: '0d 0h' // Format: days and hours
