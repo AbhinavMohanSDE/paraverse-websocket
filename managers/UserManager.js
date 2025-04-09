@@ -631,8 +631,8 @@ class UserManager {
   }
 
   /**
-   * Initialize stats for a user - updated with combat stats
-   */
+     * Initialize stats for a user - updated with combat stats
+     */
   initUserStats(userId, firstJoined, location) {
     if (!this.userStats.has(userId)) {
       this.userStats.set(userId, {
@@ -651,6 +651,8 @@ class UserManager {
         projectileHits: 0,
         //Other
         isFlying: false,
+        isStunned: false,
+        isSafeMode: true, // Start new players in safe mode by default
         //Player Stats
         level: 1,
         health: 1000,
@@ -766,6 +768,43 @@ class UserManager {
       console.log(`Updated sitting state for user ${userId}: ${isSitting ? 'sitting' : 'standing'}`);
     }
     return stats;
+  }
+
+  /**
+  * Update user stunned state
+  * @param {string} userId - The user ID
+  * @param {boolean} isStunned - Whether the user is stunned
+  * @param {number} duration - Optional duration in milliseconds
+  */
+  updateUserStunnedState(userId, isStunned, duration) {
+      const stats = this.getUserStats(userId);
+      if (stats) {
+        stats.isStunned = isStunned;
+        
+        // Set stun end time if duration is provided
+        if (isStunned && duration) {
+          stats.stunnedEndTime = Date.now() + duration;
+        } else {
+          delete stats.stunnedEndTime;
+        }
+        
+        console.log(`Updated stunned state for user ${userId}: ${isStunned ? 'stunned' : 'not stunned'}`);
+      }
+      return stats;
+  }
+    
+  /**
+  * Update user safe mode
+  * @param {string} userId - The user ID
+  * @param {boolean} isSafeMode - Whether the user is in safe mode
+  */
+  updateUserSafeMode(userId, isSafeMode) {
+      const stats = this.getUserStats(userId);
+      if (stats) {
+        stats.isSafeMode = isSafeMode;
+        console.log(`Updated safe mode for user ${userId}: ${isSafeMode ? 'enabled' : 'disabled'}`);
+      }
+      return stats;
   }
   
 }

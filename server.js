@@ -246,6 +246,73 @@ class WebSocketServer {
         console.error('Error handling sitting state update:', error);
       }
       }
+
+      // Handle player stunned state messages
+      if (parsedMessage.type === 'playerStunnedState' && 
+        parsedMessage.userId && 
+        typeof parsedMessage.isStunned === 'boolean') {
+        try {
+          const { userId, isStunned, duration } = parsedMessage;
+          
+          console.log(`Stunned state update from user ${userId}: ${isStunned ? 'stunned' : 'not stunned'}${duration ? ` for ${duration}ms` : ''}`);
+          
+          // Update the player's stunned state in UserManager (we'll add this method soon)
+          this.userManager.updateUserStunnedState(userId, isStunned, duration);
+          
+          // Broadcast the stunned state to all other clients
+          this.wss.clients.forEach((client) => {
+            if (client !== ws && client.readyState === WebSocket.OPEN) {
+              try {
+                client.send(JSON.stringify({
+                  type: 'playerStunnedState',
+                  userId,
+                  isStunned,
+                  duration
+                }));
+              } catch (error) {
+                console.error('Error broadcasting stunned state update:', error);
+              }
+            }
+          });
+          
+          return;
+        } catch (error) {
+          console.error('Error handling stunned state update:', error);
+        }
+      }
+      
+      // Handle player safe mode messages
+      if (parsedMessage.type === 'playerSafeMode' && 
+          parsedMessage.userId && 
+          typeof parsedMessage.isSafeMode === 'boolean') {
+        try {
+          const { userId, isSafeMode } = parsedMessage;
+          
+          console.log(`Safe mode update from user ${userId}: ${isSafeMode ? 'enabled' : 'disabled'}`);
+          
+          // Update the player's safe mode in UserManager (we'll add this method soon)
+          this.userManager.updateUserSafeMode(userId, isSafeMode);
+          
+          // Broadcast the safe mode to all other clients
+          this.wss.clients.forEach((client) => {
+            if (client !== ws && client.readyState === WebSocket.OPEN) {
+              try {
+                client.send(JSON.stringify({
+                  type: 'playerSafeMode',
+                  userId,
+                  isSafeMode
+                }));
+              } catch (error) {
+                console.error('Error broadcasting safe mode update:', error);
+              }
+            }
+          });
+          
+          return;
+        } catch (error) {
+          console.error('Error handling safe mode update:', error);
+        }
+      }
       
       // Handle ping-pong specially
       if (parsedMessage.type === 'ping') {
