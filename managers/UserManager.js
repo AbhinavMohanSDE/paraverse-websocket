@@ -746,6 +746,27 @@ class UserManager {
     // Return the updated stats
     return stats;
   }
+
+  /**
+   * Update user sitting state
+   * @param {string} userId - The user ID
+   * @param {boolean} isSitting - Whether the user is sitting
+   * @param {string} benchId - Optional ID of the bench
+   */
+  updateUserSittingState(userId, isSitting, benchId) {
+    const stats = this.getUserStats(userId);
+    if (stats) {
+      stats.isSitting = isSitting;
+      if (benchId) {
+        stats.benchId = benchId;
+      } else if (!isSitting) {
+        // Clear the bench ID when standing up
+        delete stats.benchId;
+      }
+      console.log(`Updated sitting state for user ${userId}: ${isSitting ? 'sitting' : 'standing'}`);
+    }
+    return stats;
+  }
   
 }
 

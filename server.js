@@ -212,6 +212,40 @@ class WebSocketServer {
         this.handleIdentity(ws, parsedMessage, clientId);
         return;
       }
+
+      // Handle player sitting state messages
+      if (parsedMessage.type === 'playerSittingState' && 
+        parsedMessage.userId && 
+        typeof parsedMessage.isSitting === 'boolean') {
+      try {
+        const { userId, isSitting, benchId } = parsedMessage;
+        
+        console.log(`Sitting state update from user ${userId}: ${isSitting ? 'sitting' : 'standing'}${benchId ? ' on bench ' + benchId : ''}`);
+        
+        // Update the player's sitting state in UserManager
+        this.userManager.updateUserSittingState(userId, isSitting, benchId);
+        
+        // Broadcast the sitting state to all other clients
+        this.wss.clients.forEach((client) => {
+          if (client !== ws && client.readyState === WebSocket.OPEN) {
+            try {
+              client.send(JSON.stringify({
+                type: 'playerSittingState',
+                userId,
+                isSitting,
+                benchId
+              }));
+            } catch (error) {
+              console.error('Error broadcasting sitting state update:', error);
+            }
+          }
+        });
+        
+        return;
+      } catch (error) {
+        console.error('Error handling sitting state update:', error);
+      }
+      }
       
       // Handle ping-pong specially
       if (parsedMessage.type === 'ping') {
