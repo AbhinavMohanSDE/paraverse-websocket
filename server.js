@@ -1406,7 +1406,10 @@ class WebSocketServer {
       'timePlayed': (val) => typeof val === 'string' && /^\d+d \d+h$/.test(val),
       
       // Animation state can be any string but with reasonable length
-      'animationState': (val) => typeof val === 'string'
+      'animationState': (val) => typeof val === 'string',
+      
+      // Deliveries made should be a number
+      'deliveriesMade': (val) => typeof val === 'number' && val >= 0
     };
     
     // Check if the stat is allowed

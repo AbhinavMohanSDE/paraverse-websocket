@@ -665,7 +665,8 @@ class UserManager {
         ability: 0,
         weapon: 'None',
         emblem: 'None',
-        timePlayed: '0d 0h' // Format: days and hours
+        timePlayed: '0d 0h', // Format: days and hours
+        deliveriesMade: 0 // Track number of cart deliveries
       });
     }
     return this.userStats.get(userId);
