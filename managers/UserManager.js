@@ -817,13 +817,15 @@ class UserManager {
    * @param {string} userId - The user ID
    * @param {boolean} isPushing - Whether the user is pushing
    * @param {boolean} isCartVisible - Whether the cart is visible
+   * @param {boolean} isMoving - Whether the player is moving while pushing
    */
-  updateUserPushingState(userId, isPushing, isCartVisible) {
+  updateUserPushingState(userId, isPushing, isCartVisible, isMoving = false) {
     const stats = this.getUserStats(userId);
     if (stats) {
       stats.isPushing = isPushing;
       stats.isPushCartVisible = isCartVisible;
-      console.log(`Updated pushing state for user ${userId}: ${isPushing ? 'pushing' : 'not pushing'}`);
+      stats.isPushingMoving = isMoving;
+      console.log(`Updated pushing state for user ${userId}: ${isPushing ? 'pushing' : 'not pushing'}, moving: ${isMoving}`);
     }
     return stats;
   }

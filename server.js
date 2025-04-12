@@ -320,12 +320,12 @@ class WebSocketServer {
           typeof parsedMessage.isCartVisible === 'boolean' &&
           typeof parsedMessage.isPushing === 'boolean') {
         try {
-          const { userId, isCartVisible, isPushing } = parsedMessage;
+          const { userId, isCartVisible, isPushing, isMoving } = parsedMessage;
           
-          console.log(`Push state update from user ${userId}: ${isPushing ? 'pushing' : 'not pushing'}, cart visible: ${isCartVisible}`);
+          console.log(`Push state update from user ${userId}: ${isPushing ? 'pushing' : 'not pushing'}, cart visible: ${isCartVisible}, moving: ${isMoving || false}`);
           
-          // Update the player's pushing state in UserManager (we'll add this method next)
-          this.userManager.updateUserPushingState(userId, isPushing, isCartVisible);
+          // Update the player's pushing state in UserManager
+          this.userManager.updateUserPushingState(userId, isPushing, isCartVisible, isMoving);
           
           // Broadcast the pushing state to all other clients
           this.wss.clients.forEach((client) => {
@@ -335,7 +335,8 @@ class WebSocketServer {
                   type: 'playerPushStatus',
                   userId,
                   isCartVisible,
-                  isPushing
+                  isPushing,
+                  isMoving: isMoving || false // Include movement state
                 }));
               } catch (error) {
                 console.error('Error broadcasting push state update:', error);
