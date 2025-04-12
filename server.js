@@ -313,6 +313,77 @@ class WebSocketServer {
           console.error('Error handling safe mode update:', error);
         }
       }
+
+      // Push State
+      if (parsedMessage.type === 'playerPushStatus' && 
+          parsedMessage.userId && 
+          typeof parsedMessage.isCartVisible === 'boolean' &&
+          typeof parsedMessage.isPushing === 'boolean') {
+        try {
+          const { userId, isCartVisible, isPushing } = parsedMessage;
+          
+          console.log(`Push state update from user ${userId}: ${isPushing ? 'pushing' : 'not pushing'}, cart visible: ${isCartVisible}`);
+          
+          // Update the player's pushing state in UserManager (we'll add this method next)
+          this.userManager.updateUserPushingState(userId, isPushing, isCartVisible);
+          
+          // Broadcast the pushing state to all other clients
+          this.wss.clients.forEach((client) => {
+            if (client !== ws && client.readyState === WebSocket.OPEN) {
+              try {
+                client.send(JSON.stringify({
+                  type: 'playerPushStatus',
+                  userId,
+                  isCartVisible,
+                  isPushing
+                }));
+              } catch (error) {
+                console.error('Error broadcasting push state update:', error);
+              }
+            }
+          });
+          
+          return;
+        } catch (error) {
+          console.error('Error handling push state update:', error);
+        }
+      }
+
+      //Mount State
+      if (parsedMessage.type === 'playerCartStatus' && 
+          parsedMessage.userId && 
+          typeof parsedMessage.isCartVisible === 'boolean' &&
+          typeof parsedMessage.isDriving === 'boolean') {
+        try {
+          const { userId, isCartVisible, isDriving, heightOffset } = parsedMessage;
+          
+          console.log(`Cart state update from user ${userId}: ${isDriving ? 'driving' : 'not driving'}, cart visible: ${isCartVisible}`);
+          
+          // Update the player's driving state in UserManager
+          this.userManager.updateUserDrivingState(userId, isDriving, isCartVisible, heightOffset);
+          
+          // Broadcast the cart state to all other clients
+          this.wss.clients.forEach((client) => {
+            if (client !== ws && client.readyState === WebSocket.OPEN) {
+              try {
+                client.send(JSON.stringify({
+                  type: 'playerCartStatus',
+                  userId,
+                  isCartVisible,
+                  isDriving,
+                  heightOffset
+                }));
+              } catch (error) {
+                console.error('Error broadcasting cart state update:', error);
+              }
+            }
+          });
+          
+          return;
+        } catch (error) {
+          console.error('Error handling cart state update:', error);
+        }
+      }
       
       // Handle ping-pong specially
       if (parsedMessage.type === 'ping') {

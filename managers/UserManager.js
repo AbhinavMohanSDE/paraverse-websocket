@@ -653,6 +653,11 @@ class UserManager {
         isFlying: false,
         isStunned: false,
         isSafeMode: true, // Start new players in safe mode by default
+        //Player movement states
+        isDriving: false,  // Driving state (MountManager)
+        isCartVisible: false, // Visibility of the drive cart
+        isPushing: false,   // Pushing state (PushManager)
+        isPushCartVisible: false, // Visibility of the push cart
         //Player Stats
         level: 1,
         health: 1000,
@@ -805,6 +810,42 @@ class UserManager {
         console.log(`Updated safe mode for user ${userId}: ${isSafeMode ? 'enabled' : 'disabled'}`);
       }
       return stats;
+  }
+
+  /**
+   * Update user pushing state
+   * @param {string} userId - The user ID
+   * @param {boolean} isPushing - Whether the user is pushing
+   * @param {boolean} isCartVisible - Whether the cart is visible
+   */
+  updateUserPushingState(userId, isPushing, isCartVisible) {
+    const stats = this.getUserStats(userId);
+    if (stats) {
+      stats.isPushing = isPushing;
+      stats.isPushCartVisible = isCartVisible;
+      console.log(`Updated pushing state for user ${userId}: ${isPushing ? 'pushing' : 'not pushing'}`);
+    }
+    return stats;
+  }
+
+  /**
+   * Update user driving state
+   * @param {string} userId - The user ID
+   * @param {boolean} isDriving - Whether the user is driving
+   * @param {boolean} isCartVisible - Whether the cart is visible
+   * @param {number} heightOffset - Optional height offset for the player
+   */
+  updateUserDrivingState(userId, isDriving, isCartVisible, heightOffset) {
+    const stats = this.getUserStats(userId);
+    if (stats) {
+      stats.isDriving = isDriving;
+      stats.isCartVisible = isCartVisible;
+      if (heightOffset !== undefined) {
+        stats.heightOffset = heightOffset;
+      }
+      console.log(`Updated driving state for user ${userId}: ${isDriving ? 'driving' : 'not driving'}`);
+    }
+    return stats;
   }
   
 }
