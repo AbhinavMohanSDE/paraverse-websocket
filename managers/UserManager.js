@@ -658,6 +658,9 @@ class UserManager {
         isCartVisible: false, // Visibility of the drive cart
         isPushing: false,   // Pushing state (PushManager)
         isPushCartVisible: false, // Visibility of the push cart
+        // Cart colors
+        cartPrimaryColor: '#FF9800',    // Default orange
+        cartSecondaryColor: '#F44336',  // Default red
         //Player Stats
         level: 1,
         health: 1000,

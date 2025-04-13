@@ -385,6 +385,45 @@ class WebSocketServer {
           console.error('Error handling cart state update:', error);
         }
       }
+
+      // Handle player cart colors updates
+      if (parsedMessage.type === 'playerCartColors' && 
+        parsedMessage.userId &&
+        parsedMessage.primaryColor &&
+        parsedMessage.secondaryColor) {
+      try {
+        const { userId, primaryColor, secondaryColor } = parsedMessage;
+        
+        console.log(`Cart colors update from user ${userId}: primary=${primaryColor}, secondary=${secondaryColor}`);
+        
+        // Store the colors in user stats
+        const userStats = this.userManager.getUserStats(userId);
+        if (userStats) {
+          userStats.cartPrimaryColor = primaryColor;
+          userStats.cartSecondaryColor = secondaryColor;
+        }
+        
+        // Broadcast the cart colors to all other clients
+        this.wss.clients.forEach((client) => {
+          if (client !== ws && client.readyState === WebSocket.OPEN) {
+            try {
+              client.send(JSON.stringify({
+                type: 'playerCartColors',
+                userId,
+                primaryColor,
+                secondaryColor
+              }));
+            } catch (error) {
+              console.error('Error broadcasting cart colors update:', error);
+            }
+          }
+        });
+        
+        return;
+      } catch (error) {
+        console.error('Error handling cart colors update:', error);
+      }
+      }
       
       // Handle ping-pong specially
       if (parsedMessage.type === 'ping') {
