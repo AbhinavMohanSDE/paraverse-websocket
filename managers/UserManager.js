@@ -741,7 +741,7 @@ class UserManager {
     // Comprehensive list of allowed stats
     const allowedStats = [
       'level', 'health', 'attack', 'ability', 
-      'weapon', 'emblem', 'timePlayed', 'animationState'
+      'weapon', 'emblem', 'timePlayed', 'animationState', 'deliveriesMade'
     ];
     
     // Validate stat name
