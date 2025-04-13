@@ -688,6 +688,9 @@ class UserManager {
     } else if (action === 'projectileHit') {
       if (!stats.projectileHits) stats.projectileHits = 0;
       stats.projectileHits += amount;
+    } else if (action === 'deliveryMade') {  // Add this case
+      if (!stats.deliveriesMade) stats.deliveriesMade = 0;
+      stats.deliveriesMade += 1;
     }
     
     console.log(`Updated stats for user ${userId}: ${JSON.stringify(stats)}`);
